@@ -95,10 +95,8 @@ function api_getDashboardData() {
     const eventsRes = api_getAllUpcomingEvents();
     if (!eventsRes.success) throw new Error(eventsRes.error);
     const allCandidates = candsRes.data;
-    const candidates = allCandidates.filter(c => {
-      const status = (c.CurrentStatus || '').trim();
-      return status !== 'Closed';
-    });
+    const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+    const candidates = allCandidates;
     const allDocs    = docsRes.data;
     const activeEvents = eventsRes.data;
     // ── Status-based counters ──────────────────────────────────────
@@ -120,9 +118,16 @@ function api_getDashboardData() {
     let pendingMedical     = 0;
     let bookedMedical      = 0;
     let docsUnderPreparing = 0;
+    let taIssues           = 0;
+    let renewalPassport    = 0;
+    let notAvailable       = 0;
+    let creatingWhatsapp   = 0;
+    let unfitPcr           = 0;
+    let unfitInjury        = 0;
+    let rejected           = 0;
     candidates.forEach(cand => {
       const status = (cand.CurrentStatus || '').trim();
-      if (status !== 'Closed') activeCount++;
+      if (!EXCLUDED_KPI_STATUSES.has(status)) activeCount++;
       if (MISSING_DOC_STATUSES.has(status))           missingDocs++;
       if (status === 'Visa Pending')                   visaPending++;
       if (status === 'Visa Completed')                 visaCompleted++;
@@ -130,6 +135,13 @@ function api_getDashboardData() {
       if (status === 'Pending Medical')                pendingMedical++;
       if (status === 'Booked a medical examination')   bookedMedical++;
       if (status === 'Documents Under Preparing')      docsUnderPreparing++;
+      if (status === 'Talent Acquisition Issues')      taIssues++;
+      if (status === 'Renewal Passport')               renewalPassport++;
+      if (status === 'Not Available')                  notAvailable++;
+      if (status === 'Creating WhatsApp Group')        creatingWhatsapp++;
+      if (status === 'Unfit-PCR')                      unfitPcr++;
+      if (status === 'Unfit-Injury')                   unfitInjury++;
+      if (status === 'Rejected')                       rejected++;
     });
     // ── Document-based counters ────────────────────────────────────
     // Build a Set of {CandidateID}_{DocType} for approved/pending docs
@@ -153,6 +165,9 @@ function api_getDashboardData() {
     const missingCount = {};
     REQUIRED_DOCS.forEach(dt => { hasCount[dt] = 0; missingCount[dt] = 0; });
     candidates.forEach(cand => {
+      const status = (cand.CurrentStatus || '').trim();
+      if (EXCLUDED_KPI_STATUSES.has(status)) return;
+      
       const myDocs = candDocMap[cand.CandidateID] || new Set();
       REQUIRED_DOCS.forEach(dt => {
         if (myDocs.has(dt)) hasCount[dt]++;
@@ -203,6 +218,13 @@ function api_getDashboardData() {
         pendingMedical,
         bookedMedical,
         docsUnderPreparing,
+        taIssues,
+        renewalPassport,
+        notAvailable,
+        creatingWhatsapp,
+        unfitPcr,
+        unfitInjury,
+        rejected,
         // Document Pending Validation
         // pendingValidation removed
         // Document HAS counts

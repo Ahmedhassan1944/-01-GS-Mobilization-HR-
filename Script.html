@@ -862,10 +862,13 @@
 
       let activeCount = 0, missingDocs = 0, visaPending = 0, visaCompleted = 0;
       let mobilized = 0, pendingMedical = 0, bookedMedical = 0, docsUnderPreparing = 0;
+      let taIssues = 0, renewalPassport = 0, notAvailable = 0, creatingWhatsapp = 0;
+      let unfitPcr = 0, unfitInjury = 0, rejected = 0;
 
       candidates.forEach(c => {
         const status = (c.CurrentStatus || '').trim();
-        if (status !== 'Closed') activeCount++;
+        const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+        if (!EXCLUDED_KPI_STATUSES.has(status)) activeCount++;
         if (MISSING_DOC_STATUSES.has(status)) missingDocs++;
         if (status === 'Visa Pending') visaPending++;
         if (status === 'Visa Completed') visaCompleted++;
@@ -873,6 +876,13 @@
         if (status === 'Pending Medical') pendingMedical++;
         if (status === 'Booked a medical examination') bookedMedical++;
         if (status === 'Documents Under Preparing') docsUnderPreparing++;
+        if (status === 'Talent Acquisition Issues') taIssues++;
+        if (status === 'Renewal Passport') renewalPassport++;
+        if (status === 'Not Available') notAvailable++;
+        if (status === 'Creating WhatsApp Group') creatingWhatsapp++;
+        if (status === 'Unfit-PCR') unfitPcr++;
+        if (status === 'Unfit-Injury') unfitInjury++;
+        if (status === 'Rejected') rejected++;
       });
 
       const REQUIRED_DOCS = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
@@ -880,6 +890,10 @@
       REQUIRED_DOCS.forEach(dt => { hasCount[dt] = 0; missingCount[dt] = 0; });
 
       candidates.forEach(c => {
+        const status = (c.CurrentStatus || '').trim();
+        const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+        if (EXCLUDED_KPI_STATUSES.has(status)) return;
+        
         const comp = docCompleteness && docCompleteness[c.CandidateID];
         if (comp) {
           REQUIRED_DOCS.forEach(dt => {
@@ -894,6 +908,8 @@
       return {
         activeCount, missingDocs, visaPending, visaCompleted, mobilized,
         pendingMedical, bookedMedical, docsUnderPreparing,
+        taIssues, renewalPassport, notAvailable, creatingWhatsapp,
+        unfitPcr, unfitInjury, rejected,
         hasPassport: hasCount['Passport'], hasPhoto: hasCount['Photo'],
         hasAcademicCert: hasCount['Academic Certificate'], hasMedicalExam: hasCount['Medical Examination'],
         hasMedicalAnalysis: hasCount['Medical Analysis'], hasVisa: hasCount['Visa'], hasCV: hasCount['CV'],
@@ -909,10 +925,11 @@
         ? allCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
         : allCands;
 
-      const activeBaseCands = baseCands.filter(c => String(c.CurrentStatus || '').trim() !== 'Closed');
-      const k = Views._computeDashboardKpis(activeBaseCands, App.state.docCompleteness);
+      const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+      const activeBaseCands = baseCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
+      const k = Views._computeDashboardKpis(baseCands, App.state.docCompleteness);
 
-      const activeAllCands = allCands.filter(c => String(c.CurrentStatus || '').trim() !== 'Closed');
+      const activeAllCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
       const batch1Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 1')).length;
       const batch2Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 2')).length;
       const batch3Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 3')).length;
@@ -921,16 +938,22 @@
       const internalCount = activeBaseCands.filter(c => String(c.Recruitment_Type || '').trim() === 'Internal').length;
       const externalCount = activeBaseCands.filter(c => String(c.Recruitment_Type || '').trim() === 'External').length;
 
-      document.getElementById('kpi-grid-status').innerHTML = [
+            document.getElementById('kpi-grid-status').innerHTML = [
         Views._kpiCard('Active Cases', k.activeCount ?? '--', '🏗️', 'blue', 'All non-closed cases', null),
+        Views._kpiCard('Internal Candidates', internalCount, '🏢', 'blue', 'Internally recruited', { type: 'recruitmentType', value: 'Internal' }),
+        Views._kpiCard('External Candidates', externalCount, '🌐', 'orange', 'Externally recruited', { type: 'recruitmentType', value: 'External' }),
         Views._kpiCard('Pending Medical', k.pendingMedical ?? '--', '🩺', 'orange', 'Awaiting medical docs', { type: 'status', value: 'Pending Medical' }),
         Views._kpiCard('Booked Medical Exam', k.bookedMedical ?? '--', '📅', 'blue', 'Medical exam appointment set', { type: 'status', value: 'Booked a medical examination' }),
         Views._kpiCard('Docs Under Preparing', k.docsUnderPreparing ?? '--', '📝', 'orange', 'Documents being prepared', { type: 'status', value: 'Documents Under Preparing' }),
         Views._kpiCard('Visa Pending', k.visaPending ?? '--', '🛂', 'red', 'Awaiting visa issuance', { type: 'status', value: 'Visa Pending' }),
         Views._kpiCard('Visa Completed', k.visaCompleted ?? '--', '✅', 'green', 'Visa issued', { type: 'status', value: 'Visa Completed' }),
-        Views._kpiCard('Mobilized', k.mobilized ?? '--', '✈️', 'purple', 'Successfully mobilized', { type: 'status', value: 'Mobilized' }),
-        Views._kpiCard('Internal Candidates', internalCount, '🏢', 'blue', 'Internally recruited', { type: 'recruitmentType', value: 'Internal' }),
-        Views._kpiCard('External Candidates', externalCount, '🌐', 'orange', 'Externally recruited', { type: 'recruitmentType', value: 'External' }),
+        Views._kpiCard('Talent Acquisition Issues', k.taIssues ?? '--', '⚠️', 'orange', 'Talent Acquisition Issues', { type: 'status', value: 'Talent Acquisition Issues' }),
+        Views._kpiCard('Renewal Passport', k.renewalPassport ?? '--', '🛂', 'blue', 'Renewal Passport', { type: 'status', value: 'Renewal Passport' }),
+        Views._kpiCard('Not Available', k.notAvailable ?? '--', '🚫', 'gray', 'Not Available', { type: 'status', value: 'Not Available' }),
+        Views._kpiCard('Creating WhatsApp Group', k.creatingWhatsapp ?? '--', '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
+        Views._kpiCard('Unfit-PCR', k.unfitPcr ?? '--', '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
+        Views._kpiCard('Unfit-Injury', k.unfitInjury ?? '--', '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
+        Views._kpiCard('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' }),
         Views._kpiCard('Batch 1', batch1Count, '1️⃣', 'blue', 'Candidates in Batch 1', { type: 'batchNumber', value: 'Batch 1' }),
         Views._kpiCard('Batch 2', batch2Count, '2️⃣', 'purple', 'Candidates in Batch 2', { type: 'batchNumber', value: 'Batch 2' }),
         Views._kpiCard('Batch 3', batch3Count, '3️⃣', 'green', 'Candidates in Batch 3', { type: 'batchNumber', value: 'Batch 3' }),
@@ -989,7 +1012,8 @@
 
           // ── Section 1: Status-based cards ──────────────────────────────
           const allCands = candsRes.data || [];
-          const activeCands = allCands.filter(c => String(c.CurrentStatus || '').trim() !== 'Closed');
+          const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+          const activeCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
 
           const internalCount = activeCands.filter(c => String(c.Recruitment_Type || '').trim() === 'Internal').length;
           const externalCount = activeCands.filter(c => String(c.Recruitment_Type || '').trim() === 'External').length;
@@ -998,16 +1022,22 @@
           const batch3Count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 3')).length;
           const batch4Count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 4')).length;
 
-          document.getElementById('kpi-grid-status').innerHTML = [
+                    document.getElementById('kpi-grid-status').innerHTML = [
             Views._kpiCard('Active Cases', k.activeCount ?? '--', '🏗️', 'blue', 'All non-closed cases', null),
+            Views._kpiCard('Internal Candidates', internalCount, '🏢', 'blue', 'Internally recruited', { type: 'recruitmentType', value: 'Internal' }),
+            Views._kpiCard('External Candidates', externalCount, '🌐', 'orange', 'Externally recruited', { type: 'recruitmentType', value: 'External' }),
             Views._kpiCard('Pending Medical', k.pendingMedical ?? '--', '🩺', 'orange', 'Awaiting medical docs', { type: 'status', value: 'Pending Medical' }),
             Views._kpiCard('Booked Medical Exam', k.bookedMedical ?? '--', '📅', 'blue', 'Medical exam appointment set', { type: 'status', value: 'Booked a medical examination' }),
             Views._kpiCard('Docs Under Preparing', k.docsUnderPreparing ?? '--', '📝', 'orange', 'Documents being prepared', { type: 'status', value: 'Documents Under Preparing' }),
             Views._kpiCard('Visa Pending', k.visaPending ?? '--', '🛂', 'red', 'Awaiting visa issuance', { type: 'status', value: 'Visa Pending' }),
             Views._kpiCard('Visa Completed', k.visaCompleted ?? '--', '✅', 'green', 'Visa issued', { type: 'status', value: 'Visa Completed' }),
-            Views._kpiCard('Mobilized', k.mobilized ?? '--', '✈️', 'purple', 'Successfully mobilized', { type: 'status', value: 'Mobilized' }),
-            Views._kpiCard('Internal Candidates', internalCount, '🏢', 'blue', 'Internally recruited', { type: 'recruitmentType', value: 'Internal' }),
-            Views._kpiCard('External Candidates', externalCount, '🌐', 'orange', 'Externally recruited', { type: 'recruitmentType', value: 'External' }),
+            Views._kpiCard('Talent Acquisition Issues', k.taIssues ?? '--', '⚠️', 'orange', 'Talent Acquisition Issues', { type: 'status', value: 'Talent Acquisition Issues' }),
+            Views._kpiCard('Renewal Passport', k.renewalPassport ?? '--', '🛂', 'blue', 'Renewal Passport', { type: 'status', value: 'Renewal Passport' }),
+            Views._kpiCard('Not Available', k.notAvailable ?? '--', '🚫', 'gray', 'Not Available', { type: 'status', value: 'Not Available' }),
+            Views._kpiCard('Creating WhatsApp Group', k.creatingWhatsapp ?? '--', '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
+            Views._kpiCard('Unfit-PCR', k.unfitPcr ?? '--', '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
+            Views._kpiCard('Unfit-Injury', k.unfitInjury ?? '--', '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
+            Views._kpiCard('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' }),
             Views._kpiCard('Batch 1', batch1Count, '1️⃣', 'blue', 'Candidates in Batch 1', { type: 'batchNumber', value: 'Batch 1' }),
             Views._kpiCard('Batch 2', batch2Count, '2️⃣', 'purple', 'Candidates in Batch 2', { type: 'batchNumber', value: 'Batch 2' }),
             Views._kpiCard('Batch 3', batch3Count, '3️⃣', 'green', 'Candidates in Batch 3', { type: 'batchNumber', value: 'Batch 3' }),
