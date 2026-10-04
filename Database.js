@@ -387,7 +387,14 @@ function api_updateCandidateStatus(candidateId, newStatus) {
     'Visa Pending',
     'Visa Completed',
     'Mobilized',
-    'Closed'
+    'Closed',
+    'Talent Acquisition Issues',
+    'Renewal Passport',
+    'Not Available',
+    'Creating WhatsApp Group',
+    'Unfit-PCR',
+    'Unfit-Injury',
+    'Rejected'
   ]);
 
   if (!ALLOWED_STATUSES.has(newStatus)) {

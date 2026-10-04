@@ -246,7 +246,7 @@
             totalMissingDocs: list.length * 10
           },
           filterOptions: {
-            statuses: ["New Candidate", "Documents Requested", "Documents Under Preparing", "Pending Passport", "Pending Photo", "Pending Academic Certificate", "Pending Medical", "Booked a medical examination", "Documents Complete", "Visa Pending", "Visa Completed", "Mobilized", "Closed"],
+            statuses: ["New Candidate", "Documents Requested", "Documents Under Preparing", "Pending Passport", "Pending Photo", "Pending Academic Certificate", "Pending Medical", "Booked a medical examination", "Documents Complete", "Visa Pending", "Visa Completed", "Mobilized", "Closed", "Talent Acquisition Issues", "Renewal Passport", "Not Available", "Creating WhatsApp Group", "Unfit-PCR", "Unfit-Injury", "Rejected"],
             departments: [...new Set(candidates.map(c => c.Department).filter(Boolean))].sort(),
             nationalities: [...new Set(candidates.map(c => c.Nationality).filter(Boolean))].sort(),
             positions: [...new Set(candidates.map(c => c.Position).filter(Boolean))].sort(),
@@ -356,6 +356,20 @@
       'Mobilized': 'mobilized',
       'Booked a medical examination': 'review',
       'Documents Under Preparing': 'pending',
+      // ── New Candidate Statuses ──
+      'Talent Acquisition Issues': 'ta-issues',
+      'Renewal Passport': 'renewal-passport',
+      'Not Available': 'not-available',
+      'Creating WhatsApp Group': 'whatsapp',
+      'Unfit-PCR': 'unfit-pcr',
+      'Unfit-Injury': 'unfit-injury',
+      // ── New Candidate Statuses ──
+      'Talent Acquisition Issues': 'ta-issues',
+      'Renewal Passport': 'renewal-passport',
+      'Not Available': 'not-available',
+      'Creating WhatsApp Group': 'whatsapp',
+      'Unfit-PCR': 'unfit-pcr',
+      'Unfit-Injury': 'unfit-injury',
     };
     const cls = map[status] || 'pending';
     return `<span class="badge badge--${cls}">${status || 'Unknown'}</span>`;
@@ -653,7 +667,22 @@
                 <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Visa Pending"                 onchange="Views._dashOnStatusCheckChange()"><span>Visa Pending</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Visa Completed"               onchange="Views._dashOnStatusCheckChange()"><span>Visa Completed</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Mobilized"                    onchange="Views._dashOnStatusCheckChange()"><span>Mobilized</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Talent Acquisition Issues"    onchange="Views._dashOnStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Renewal Passport"             onchange="Views._dashOnStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Not Available"                onchange="Views._dashOnStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Creating WhatsApp Group"      onchange="Views._dashOnStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Unfit-PCR"                    onchange="Views._dashOnStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Unfit-Injury"                 onchange="Views._dashOnStatusCheckChange()"><span>Unfit-Injury</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Talent Acquisition Issues"    onchange="Views._dashOnStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Renewal Passport"             onchange="Views._dashOnStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Not Available"                onchange="Views._dashOnStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Creating WhatsApp Group"      onchange="Views._dashOnStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Unfit-PCR"                    onchange="Views._dashOnStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Unfit-Injury"                 onchange="Views._dashOnStatusCheckChange()"><span>Unfit-Injury</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Closed"                       onchange="Views._dashOnStatusCheckChange()"><span>Closed</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-status-check" value="Rejected"                       onchange="Views._dashOnStatusCheckChange()"><span>Rejected</span></label>
               </div>
             </div>
 
@@ -671,7 +700,22 @@
                 <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Visa Pending"                 onchange="Views._dashOnExcludeStatusCheckChange()"><span>Visa Pending</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Visa Completed"               onchange="Views._dashOnExcludeStatusCheckChange()"><span>Visa Completed</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Mobilized"                    onchange="Views._dashOnExcludeStatusCheckChange()"><span>Mobilized</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Talent Acquisition Issues"    onchange="Views._dashOnExcludeStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Renewal Passport"             onchange="Views._dashOnExcludeStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Not Available"                onchange="Views._dashOnExcludeStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Creating WhatsApp Group"      onchange="Views._dashOnExcludeStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Unfit-PCR"                    onchange="Views._dashOnExcludeStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Unfit-Injury"                 onchange="Views._dashOnExcludeStatusCheckChange()"><span>Unfit-Injury</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Talent Acquisition Issues"    onchange="Views._dashOnExcludeStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Renewal Passport"             onchange="Views._dashOnExcludeStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Not Available"                onchange="Views._dashOnExcludeStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Creating WhatsApp Group"      onchange="Views._dashOnExcludeStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Unfit-PCR"                    onchange="Views._dashOnExcludeStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Unfit-Injury"                 onchange="Views._dashOnExcludeStatusCheckChange()"><span>Unfit-Injury</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Closed"                      onchange="Views._dashOnExcludeStatusCheckChange()"><span>Closed</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="dash-excl-status-check" value="Rejected"                      onchange="Views._dashOnExcludeStatusCheckChange()"><span>Rejected</span></label>
               </div>
             </div>
 
@@ -1590,7 +1634,22 @@
                 <label class="filter-check-item"><input type="checkbox" class="status-check" value="Visa Pending"                id="sc-Visa_Pending"                 onchange="Views._onStatusCheckChange()"><span>Visa Pending</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="status-check" value="Visa Completed"              id="sc-Visa_Completed"               onchange="Views._onStatusCheckChange()"><span>Visa Completed</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="status-check" value="Mobilized"                   id="sc-Mobilized"                    onchange="Views._onStatusCheckChange()"><span>Mobilized</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Talent Acquisition Issues"    id="sc-TA_Issues"                    onchange="Views._onStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Renewal Passport"             id="sc-Renewal_Passport"             onchange="Views._onStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Not Available"                id="sc-Not_Available"                onchange="Views._onStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Creating WhatsApp Group"      id="sc-WhatsApp_Group"               onchange="Views._onStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Unfit-PCR"                    id="sc-Unfit_PCR"                    onchange="Views._onStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Unfit-Injury"                 id="sc-Unfit_Injury"                 onchange="Views._onStatusCheckChange()"><span>Unfit-Injury</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Talent Acquisition Issues"    id="sc-TA_Issues"                    onchange="Views._onStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Renewal Passport"             id="sc-Renewal_Passport"             onchange="Views._onStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Not Available"                id="sc-Not_Available"                onchange="Views._onStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Creating WhatsApp Group"      id="sc-WhatsApp_Group"               onchange="Views._onStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Unfit-PCR"                    id="sc-Unfit_PCR"                    onchange="Views._onStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Unfit-Injury"                 id="sc-Unfit_Injury"                 onchange="Views._onStatusCheckChange()"><span>Unfit-Injury</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="status-check" value="Closed"                      id="sc-Closed"                       onchange="Views._onStatusCheckChange()"><span>Closed</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="status-check" value="Rejected"                      id="sc-Rejected"                       onchange="Views._onStatusCheckChange()"><span>Rejected</span></label>
               </div>
             </div>
 
@@ -1608,7 +1667,22 @@
                 <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Visa Pending"                id="ex-Visa_Pending"                 onchange="Views._onExcludeStatusCheckChange()"><span>Visa Pending</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Visa Completed"              id="ex-Visa_Completed"               onchange="Views._onExcludeStatusCheckChange()"><span>Visa Completed</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Mobilized"                   id="ex-Mobilized"                    onchange="Views._onExcludeStatusCheckChange()"><span>Mobilized</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Talent Acquisition Issues"    id="ex-TA_Issues"                    onchange="Views._onExcludeStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Renewal Passport"             id="ex-Renewal_Passport"             onchange="Views._onExcludeStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Not Available"                id="ex-Not_Available"                onchange="Views._onExcludeStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Creating WhatsApp Group"      id="ex-WhatsApp_Group"               onchange="Views._onExcludeStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Unfit-PCR"                    id="ex-Unfit_PCR"                    onchange="Views._onExcludeStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Unfit-Injury"                 id="ex-Unfit_Injury"                 onchange="Views._onExcludeStatusCheckChange()"><span>Unfit-Injury</span></label>
+                
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Talent Acquisition Issues"    id="ex-TA_Issues"                    onchange="Views._onExcludeStatusCheckChange()"><span>Talent Acquisition Issues</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Renewal Passport"             id="ex-Renewal_Passport"             onchange="Views._onExcludeStatusCheckChange()"><span>Renewal Passport</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Not Available"                id="ex-Not_Available"                onchange="Views._onExcludeStatusCheckChange()"><span>Not Available</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Creating WhatsApp Group"      id="ex-WhatsApp_Group"               onchange="Views._onExcludeStatusCheckChange()"><span>Creating WhatsApp Group</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Unfit-PCR"                    id="ex-Unfit_PCR"                    onchange="Views._onExcludeStatusCheckChange()"><span>Unfit-PCR</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Unfit-Injury"                 id="ex-Unfit_Injury"                 onchange="Views._onExcludeStatusCheckChange()"><span>Unfit-Injury</span></label>
                 <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Closed"                      id="ex-Closed"                       onchange="Views._onExcludeStatusCheckChange()"><span>Closed</span></label>
+                <label class="filter-check-item"><input type="checkbox" class="excl-status-check" value="Rejected"                      id="ex-Rejected"                       onchange="Views._onExcludeStatusCheckChange()"><span>Rejected</span></label>
               </div>
             </div>
 
@@ -2491,6 +2565,13 @@
         'Visa Pending',
         'Visa Completed',
         'Mobilized',
+        'Talent Acquisition Issues',
+        'Renewal Passport',
+        'Not Available',
+        'Creating WhatsApp Group',
+        'Unfit-PCR',
+        'Unfit-Injury',
+        'Rejected',
         'Closed'
       ];
 
@@ -2754,6 +2835,13 @@
         'Visa Pending',
         'Visa Completed',
         'Mobilized',
+        'Talent Acquisition Issues',
+        'Renewal Passport',
+        'Not Available',
+        'Creating WhatsApp Group',
+        'Unfit-PCR',
+        'Unfit-Injury',
+        'Rejected',
         'Closed'
       ];
       Modal.open(`

@@ -176,7 +176,9 @@ function api_getDocumentsCenterData(filtersJson) {
       "New Candidate", "Documents Requested", "Documents Under Preparing",
       "Pending Passport", "Pending Photo", "Pending Academic Certificate",
       "Pending Medical", "Booked a medical examination", "Documents Complete",
-      "Visa Pending", "Visa Completed", "Mobilized", "Closed"
+      "Visa Pending", "Visa Completed", "Mobilized", "Closed",
+      "Talent Acquisition Issues", "Renewal Passport", "Not Available",
+      "Creating WhatsApp Group", "Unfit-PCR", "Unfit-Injury", "Rejected"
     ];
 
     var result = {
@@ -605,7 +607,9 @@ function api_getDocumentsCenterFilterOptions() {
       "New Candidate", "Documents Requested", "Documents Under Preparing",
       "Pending Passport", "Pending Photo", "Pending Academic Certificate",
       "Pending Medical", "Booked a medical examination", "Documents Complete",
-      "Visa Pending", "Visa Completed", "Mobilized", "Closed"
+      "Visa Pending", "Visa Completed", "Mobilized", "Closed",
+      "Talent Acquisition Issues", "Renewal Passport", "Not Available",
+      "Creating WhatsApp Group", "Unfit-PCR", "Unfit-Injury", "Rejected"
     ];
     
     return {
