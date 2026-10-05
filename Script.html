@@ -578,9 +578,14 @@
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(() => `<div class="kpi-card"><div class="skeleton" style="height:80px"></div></div>`).join('')}
       </div>
 
-      <div class="kpi-section-label" style="margin-top:var(--sp-5)">📦 Staff Batch</div>
+      <div class="kpi-section-label" style="margin-top:var(--sp-5)">📦 Staff Batches</div>
       <div class="kpi-grid" id="kpi-grid-batch">
         ${[1, 2, 3, 4].map(() => `<div class="kpi-card"><div class="skeleton" style="height:80px"></div></div>`).join('')}
+      </div>
+
+      <div class="kpi-section-label" style="margin-top:var(--sp-5)">📦 Kalhat Batches</div>
+      <div class="kpi-grid" id="kpi-grid-kalhat-batch">
+        ${[1, 2].map(() => `<div class="kpi-card"><div class="skeleton" style="height:80px"></div></div>`).join('')}
       </div>
 
       <div class="kpi-section-label" style="margin-top:var(--sp-5)">✅ Candidates WITH Document <span style="font-size:0.85em; opacity:0.8; font-weight:normal">(excludes Closed)</span></div>
@@ -958,6 +963,7 @@
       ].join('');
 
       document.getElementById('kpi-grid-batch').innerHTML = Views._getBatchCardsHtml(activeAllCands);
+      document.getElementById('kpi-grid-kalhat-batch').innerHTML = Views._getKalhatBatchCardsHtml(activeAllCands);
 
       document.getElementById('kpi-grid-has').innerHTML = [
         Views._kpiCard('Has Passport', k.hasPassport ?? '--', '🛂', 'green', 'Passport uploaded & valid', { type: 'hasDoc', value: 'Passport' }),
@@ -996,6 +1002,16 @@
         { name: 'Staff Batch 4', filterValue: 'Batch 4', icon: '4️⃣', color: 'teal' }
       ];
       return STAFF_BATCHES.map(b => {
+        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(b.filterValue)).length;
+        return Views._kpiCard(b.name, count, b.icon, b.color, `Candidates in ${b.name}`, { type: 'batchNumber', value: b.filterValue });
+      }).join('');
+    },
+    _getKalhatBatchCardsHtml(activeCands) {
+      const KALHAT_BATCHES = [
+        { name: 'Kalhat Batch 1', filterValue: 'Kalhat Batch 1', icon: '1️⃣', color: 'blue' },
+        { name: 'Kalhat Batch 2', filterValue: 'Kalhat Batch 2', icon: '2️⃣', color: 'purple' }
+      ];
+      return KALHAT_BATCHES.map(b => {
         const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(b.filterValue)).length;
         return Views._kpiCard(b.name, count, b.icon, b.color, `Candidates in ${b.name}`, { type: 'batchNumber', value: b.filterValue });
       }).join('');
@@ -1048,6 +1064,7 @@
           ].join('');
 
           document.getElementById('kpi-grid-batch').innerHTML = Views._getBatchCardsHtml(activeCands);
+          document.getElementById('kpi-grid-kalhat-batch').innerHTML = Views._getKalhatBatchCardsHtml(activeCands);
 
           // ── Section 2: HAS document cards ──────────────────────────────
           document.getElementById('kpi-grid-has').innerHTML = [
