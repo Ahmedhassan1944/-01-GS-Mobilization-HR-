@@ -2436,24 +2436,31 @@
     },
     
     _copyCandidateLocalPath(btnEl, candidateName) {
-      const path = 'U:\\\\HR\\\\06. Employee Database\\\\06.1 Employee Personal Files\\\\' + candidateName;
+      // 1. Extract strictly the first two names
+      const nameParts = (candidateName || '').trim().split(/\s+/).slice(0, 2);
+      const shortName = nameParts.join(' ');
+
+      // 2. Construct clean Windows path with single backslashes
+      const path = 'U:\\HR\\06. Employee Database\\06.1 Employee Personal Files\\' + shortName;
       const originalHtml = btnEl.innerHTML;
-      
+
       const onSuccess = () => {
         btnEl.innerHTML = '✅';
         Toast.success('Local path copied to clipboard.');
         setTimeout(() => { btnEl.innerHTML = originalHtml; }, 1200);
       };
 
+      // 3. Copy to clipboard with fallback
       if (navigator.clipboard && window.isSecureContext) {
         navigator.clipboard.writeText(path).then(onSuccess).catch(err => {
-          console.error('Failed to copy', err);
+          console.error('Failed to copy local path:', err);
           Toast.error('Failed to copy local path.');
         });
       } else {
         const textArea = document.createElement("textarea");
         textArea.value = path;
         textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
@@ -2461,7 +2468,7 @@
           document.execCommand('copy');
           onSuccess();
         } catch (err) {
-          console.error('Fallback failed', err);
+          console.error('Fallback copy failed:', err);
           Toast.error('Failed to copy local path.');
         }
         document.body.removeChild(textArea);
