@@ -2402,6 +2402,15 @@
                     onclick="Router.navigate('candidate-detail',{selectedCandidate:${JSON.stringify(c).replace(/"/g, '&quot;')}})"
                     aria-label="View ${escHtml(c.FullName)} details">View</button>
           </td>
+          <td>
+            <div class="quick-action-toolbar">
+              <button class="quick-action-btn" title="Schedule Calendar Event" onclick="Views._openEventModal('${escHtml(c.CandidateID)}')">📅⁺</button>
+              <button class="quick-action-btn" title="Update Mobilization Status" onclick="Views._openStatusModal('${escHtml(c.CandidateID)}', '${escHtml(c.FullName).replace(/'/g, "\\'")}')">🔄</button>
+              <button class="quick-action-btn" title="Edit Candidate Profile" onclick="Views._openEditProfileModal('${escHtml(c.CandidateID)}')">✏️</button>
+              <button class="quick-action-btn" title="Upload Candidate Document" onclick="Views._openUploadModal('${escHtml(c.CandidateID)}', '${escHtml(c.DriveFolderID || '')}')">📤</button>
+              <button class="quick-action-btn" title="Copy Local File Path" onclick="Views._copyCandidateLocalPath(this, '${escHtml(c.FullName).replace(/'/g, "\\'")}')">🗂️</button>
+            </div>
+          </td>
         </tr>`;
       }).join('');
 
@@ -2418,11 +2427,45 @@
               ${Views._thSort('Missing Documents', 'missingCount')}
               ${Views._thSort('Created', 'CreatedAt')}
               <th scope="col">Actions</th>
+              <th scope="col">Buttons</th>
             </tr>
           </thead>
           <tbody>${trs}</tbody>
         </table>
       </div>`;
+    },
+    
+    _copyCandidateLocalPath(btnEl, candidateName) {
+      const path = 'U:\\\\HR\\\\06. Employee Database\\\\06.1 Employee Personal Files\\\\' + candidateName;
+      const originalHtml = btnEl.innerHTML;
+      
+      const onSuccess = () => {
+        btnEl.innerHTML = '✅';
+        Toast.success('Local path copied to clipboard.');
+        setTimeout(() => { btnEl.innerHTML = originalHtml; }, 1200);
+      };
+
+      if (navigator.clipboard && window.isSecureContext) {
+        navigator.clipboard.writeText(path).then(onSuccess).catch(err => {
+          console.error('Failed to copy', err);
+          Toast.error('Failed to copy local path.');
+        });
+      } else {
+        const textArea = document.createElement("textarea");
+        textArea.value = path;
+        textArea.style.position = "fixed";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try {
+          document.execCommand('copy');
+          onSuccess();
+        } catch (err) {
+          console.error('Fallback failed', err);
+          Toast.error('Failed to copy local path.');
+        }
+        document.body.removeChild(textArea);
+      }
     },
 
     _exportCandidates() {
