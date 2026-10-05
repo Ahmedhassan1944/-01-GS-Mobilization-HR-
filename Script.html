@@ -578,6 +578,11 @@
         ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13].map(() => `<div class="kpi-card"><div class="skeleton" style="height:80px"></div></div>`).join('')}
       </div>
 
+      <div class="kpi-section-label" style="margin-top:var(--sp-5)">📦 Staff Batch</div>
+      <div class="kpi-grid" id="kpi-grid-batch">
+        ${[1, 2, 3, 4].map(() => `<div class="kpi-card"><div class="skeleton" style="height:80px"></div></div>`).join('')}
+      </div>
+
       <div class="kpi-section-label" style="margin-top:var(--sp-5)">✅ Candidates WITH Document <span style="font-size:0.85em; opacity:0.8; font-weight:normal">(excludes Closed)</span></div>
       <div class="kpi-grid" id="kpi-grid-has">
         ${[1, 2, 3, 4, 5, 6, 7].map(() => `<div class="kpi-card"><div class="skeleton" style="height:80px"></div></div>`).join('')}
@@ -930,10 +935,6 @@
       const k = Views._computeDashboardKpis(baseCands, App.state.docCompleteness);
 
       const activeAllCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
-      const batch1Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 1')).length;
-      const batch2Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 2')).length;
-      const batch3Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 3')).length;
-      const batch4Count = activeAllCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 4')).length;
 
       const internalCount = activeBaseCands.filter(c => String(c.Recruitment_Type || '').trim() === 'Internal').length;
       const externalCount = activeBaseCands.filter(c => String(c.Recruitment_Type || '').trim() === 'External').length;
@@ -953,12 +954,10 @@
         Views._kpiCard('Creating WhatsApp Group', k.creatingWhatsapp ?? '--', '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
         Views._kpiCard('Unfit-PCR', k.unfitPcr ?? '--', '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
         Views._kpiCard('Unfit-Injury', k.unfitInjury ?? '--', '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
-        Views._kpiCard('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' }),
-        Views._kpiCard('Batch 1', batch1Count, '1️⃣', 'blue', 'Candidates in Batch 1', { type: 'batchNumber', value: 'Batch 1' }),
-        Views._kpiCard('Batch 2', batch2Count, '2️⃣', 'purple', 'Candidates in Batch 2', { type: 'batchNumber', value: 'Batch 2' }),
-        Views._kpiCard('Batch 3', batch3Count, '3️⃣', 'green', 'Candidates in Batch 3', { type: 'batchNumber', value: 'Batch 3' }),
-        Views._kpiCard('Batch 4', batch4Count, '4️⃣', 'teal', 'Candidates in Batch 4', { type: 'batchNumber', value: 'Batch 4' }),
+        Views._kpiCard('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' })
       ].join('');
+
+      document.getElementById('kpi-grid-batch').innerHTML = Views._getBatchCardsHtml(activeAllCands);
 
       document.getElementById('kpi-grid-has').innerHTML = [
         Views._kpiCard('Has Passport', k.hasPassport ?? '--', '🛂', 'green', 'Passport uploaded & valid', { type: 'hasDoc', value: 'Passport' }),
@@ -989,6 +988,18 @@
     _getBatchValue(c) {
       return c.Batch_Number || c['Batch Number'] || '';
     },
+    _getBatchCardsHtml(activeCands) {
+      const STAFF_BATCHES = [
+        { name: 'Staff Batch 1', filterValue: 'Batch 1', icon: '1️⃣', color: 'blue' },
+        { name: 'Staff Batch 2', filterValue: 'Batch 2', icon: '2️⃣', color: 'purple' },
+        { name: 'Staff Batch 3', filterValue: 'Batch 3', icon: '3️⃣', color: 'green' },
+        { name: 'Staff Batch 4', filterValue: 'Batch 4', icon: '4️⃣', color: 'teal' }
+      ];
+      return STAFF_BATCHES.map(b => {
+        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(b.filterValue)).length;
+        return Views._kpiCard(b.name, count, b.icon, b.color, `Candidates in ${b.name}`, { type: 'batchNumber', value: b.filterValue });
+      }).join('');
+    },
 
     async _refreshDashboard() {
       // State for multi-select card filtering
@@ -1017,10 +1028,6 @@
 
           const internalCount = activeCands.filter(c => String(c.Recruitment_Type || '').trim() === 'Internal').length;
           const externalCount = activeCands.filter(c => String(c.Recruitment_Type || '').trim() === 'External').length;
-          const batch1Count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 1')).length;
-          const batch2Count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 2')).length;
-          const batch3Count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 3')).length;
-          const batch4Count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch('Batch 4')).length;
 
                     document.getElementById('kpi-grid-status').innerHTML = [
             Views._kpiCard('Active Cases', k.activeCount ?? '--', '🏗️', 'blue', 'All non-closed cases', null),
@@ -1037,12 +1044,10 @@
             Views._kpiCard('Creating WhatsApp Group', k.creatingWhatsapp ?? '--', '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
             Views._kpiCard('Unfit-PCR', k.unfitPcr ?? '--', '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
             Views._kpiCard('Unfit-Injury', k.unfitInjury ?? '--', '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
-            Views._kpiCard('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' }),
-            Views._kpiCard('Batch 1', batch1Count, '1️⃣', 'blue', 'Candidates in Batch 1', { type: 'batchNumber', value: 'Batch 1' }),
-            Views._kpiCard('Batch 2', batch2Count, '2️⃣', 'purple', 'Candidates in Batch 2', { type: 'batchNumber', value: 'Batch 2' }),
-            Views._kpiCard('Batch 3', batch3Count, '3️⃣', 'green', 'Candidates in Batch 3', { type: 'batchNumber', value: 'Batch 3' }),
-            Views._kpiCard('Batch 4', batch4Count, '4️⃣', 'teal', 'Candidates in Batch 4', { type: 'batchNumber', value: 'Batch 4' }),
+            Views._kpiCard('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' })
           ].join('');
+
+          document.getElementById('kpi-grid-batch').innerHTML = Views._getBatchCardsHtml(activeCands);
 
           // ── Section 2: HAS document cards ──────────────────────────────
           document.getElementById('kpi-grid-has').innerHTML = [
