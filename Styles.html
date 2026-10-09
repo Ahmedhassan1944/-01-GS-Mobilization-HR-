@@ -2091,4 +2091,31 @@ body.dark-mode .passport-date-select {
   border-color: var(--border-dark, #334155);
   color: var(--text-primary-dark, #f8fafc);
 }
+
+/* ── Inline Expiry Date Picker (Preview Modal) ── */
+.preview-expiry-inline-group {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.preview-expiry-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.preview-expiry-select {
+  height: 32px;
+  padding: 0 6px;
+  font-size: 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+body.dark-mode .preview-expiry-select {
+  background: var(--bg-surface-dark, #1e293b);
+  border-color: var(--border-dark, #334155);
+  color: var(--text-primary-dark, #f8fafc);
+}
 </style>

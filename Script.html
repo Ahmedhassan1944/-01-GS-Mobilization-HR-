@@ -4993,10 +4993,14 @@
     },
 
     async _dcOpenPreview(candidateId, docType) {
-      // Show loading modal immediately
+      const dc = App.state.documentsCenter;
+      const cand = dc.candidates.find(c => c.candidateId === candidateId);
+      const docInfo = (cand && cand.docDetails && cand.docDetails[docType]) || {};
+      const currentExpiry = docInfo.expiryDate || '';
+
       Modal.open(`
         <div class="modal__header">
-          <h2 class="modal__title">👁 Preview — ${docType}</h2>
+          <h2 class="modal__title">👁 Preview — ${escHtml(docType)}</h2>
           <button class="modal__close" onclick="Modal.close()">✕</button>
         </div>
         <div class="modal__body" style="text-align:center;padding:40px;">
@@ -5008,18 +5012,55 @@
         const res = await GAS.call('api_getDocumentPreviewInfo', candidateId, docType);
         if (!res.success) throw new Error(res.error);
 
+        const isExpirable = ['Passport', 'Medical Examination', 'Medical Analysis'].includes(docType);
+        
+        let defaultY = '', defaultM = '', defaultD = '';
+        if (currentExpiry && /^\d{4}-\d{2}-\d{2}$/.test(currentExpiry)) {
+          const parts = currentExpiry.split('-');
+          defaultY = parts[0]; defaultM = parts[1]; defaultD = parts[2];
+        }
+
+        const currentYear = new Date().getFullYear();
+        const yearOptions = Array.from({ length: 13 }, (_, i) => {
+          const y = currentYear + i;
+          return `<option value="${y}" ${String(y) === defaultY ? 'selected' : ''}>'${String(y).slice(-2)}</option>`;
+        }).join('');
+
+        const monthOptions = Array.from({ length: 12 }, (_, i) => {
+          const m = String(i + 1).padStart(2, '0');
+          return `<option value="${m}" ${m === defaultM ? 'selected' : ''}>${m}</option>`;
+        }).join('');
+
+        const dayOptions = Array.from({ length: 31 }, (_, i) => {
+          const d = String(i + 1).padStart(2, '0');
+          return `<option value="${d}" ${d === defaultD ? 'selected' : ''}>${d}</option>`;
+        }).join('');
+
+        const inlineExpiryHtml = isExpirable ? `
+          <div class="preview-expiry-inline-group">
+            <span class="preview-expiry-label">📅 Expiry:</span>
+            <select class="form-select preview-expiry-select" id="prev-select-day"><option value="">DD</option>${dayOptions}</select>
+            <select class="form-select preview-expiry-select" id="prev-select-month"><option value="">MM</option>${monthOptions}</select>
+            <select class="form-select preview-expiry-select" id="prev-select-year"><option value="">YY</option>${yearOptions}</select>
+            <button class="btn btn--primary btn--sm" id="prev-btn-save-expiry" 
+              onclick="Views._savePreviewDocExpiry('${candidateId}', '${docType}')">Save Date</button>
+          </div>` : '';
+
         Modal.open(`
           <div class="modal__header">
-            <h2 class="modal__title">👁 ${res.candidateName} — ${docType}</h2>
+            <h2 class="modal__title">👁 ${escHtml(res.candidateName)} — ${escHtml(docType)}</h2>
             <button class="modal__close" onclick="Modal.close()">✕</button>
           </div>
           <div class="modal__body" style="padding:0;">
-            <iframe src="${res.fileUrl}" style="width:100%;height:70vh;border:none;display:block;" 
-              title="${res.fileName}"></iframe>
+            <iframe src="${res.fileUrl}" style="width:100%;height:68vh;border:none;display:block;" 
+              title="${escHtml(res.fileName)}"></iframe>
           </div>
-          <div class="modal__footer">
-            <a href="${res.fileUrl.replace('/preview', '/view')}" target="_blank" class="btn btn--outline btn--sm">🔗 Open in Drive</a>
-            <button class="btn btn--outline" onclick="Modal.close()">Close</button>
+          <div class="modal__footer" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            ${inlineExpiryHtml}
+            <div style="display:flex;gap:var(--sp-2);margin-left:auto;">
+              <a href="${res.fileUrl.replace('/preview', '/view')}" target="_blank" class="btn btn--outline btn--sm">🔗 Open in Drive</a>
+              <button class="btn btn--outline btn--sm" onclick="Modal.close()">Close</button>
+            </div>
           </div>
         `);
       } catch (e) {
@@ -5029,9 +5070,65 @@
             <button class="modal__close" onclick="Modal.close()">✕</button>
           </div>
           <div class="modal__body" style="text-align:center;padding:40px;color:var(--danger);">
-            ${e.message}
+            ${escHtml(e.message)}
           </div>
         `);
+      }
+    },
+
+    async _savePreviewDocExpiry(candidateId, docType) {
+      const day = document.getElementById('prev-select-day')?.value;
+      const month = document.getElementById('prev-select-month')?.value;
+      const year = document.getElementById('prev-select-year')?.value;
+
+      if (!day || !month || !year) {
+        Toast.warning('Please select Day, Month, and Year.');
+        return;
+      }
+
+      const yNum = parseInt(year, 10), mNum = parseInt(month, 10), dNum = parseInt(day, 10);
+      const daysInMonth = new Date(yNum, mNum, 0).getDate();
+      if (dNum > daysInMonth) {
+        Toast.warning(`Invalid date: Selected month only has ${daysInMonth} days.`);
+        return;
+      }
+
+      const expiry = `${year}-${month}-${day}`;
+      const btn = document.getElementById('prev-btn-save-expiry');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Saving…';
+
+      try {
+        const res = await GAS.call('api_updateDocExpiryDate', candidateId, docType, expiry);
+        if (!res.success) throw new Error(res.error);
+
+        Toast.success(`${docType} expiry date saved!`);
+        
+        // Update local state
+        if (App.state.documentsCenter && App.state.documentsCenter.loaded) {
+          const cand = App.state.documentsCenter.candidates.find(c => c.candidateId === candidateId);
+          if (cand && cand.docDetails && cand.docDetails[docType]) {
+            cand.docDetails[docType].expiryDate = expiry;
+            Views._dcRender();
+          } else {
+            Views._dcLoad();
+          }
+        }
+        
+        btn.innerHTML = 'Saved ✓';
+        btn.style.backgroundColor = 'var(--success)';
+        btn.style.borderColor = 'var(--success)';
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.innerHTML = 'Save Date';
+          btn.style.backgroundColor = '';
+          btn.style.borderColor = '';
+        }, 1500);
+
+      } catch (err) {
+        Toast.error(err.message);
+        btn.disabled = false;
+        btn.innerHTML = 'Save Date';
       }
     }
   };
