@@ -613,17 +613,33 @@
       </div>
 
       <!-- ── Dashboard Full Filter ── -->
+      <div class="candidate-filter-bar">
+        <div class="search-input" style="flex: 1; min-width: 200px;">
+          <span class="search-input__icon" aria-hidden="true">🔍</span>
+          <input type="search" id="dash-tb-search" placeholder="Name, HR Code, ID..."
+                 aria-label="Search candidates" oninput="Views._applyDashboardAllFilters()" autocomplete="off">
+        </div>
+        <select id="dash-tb-pos" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
+          <option value="">💼 All Positions</option>
+        </select>
+        <select id="dash-tb-status" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
+          <option value="">📋 All Statuses</option>
+        </select>
+        <select id="dash-tb-nat" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
+          <option value="">🌍 All Nationalities</option>
+        </select>
+        <select id="dash-tb-batch" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
+          <option value="">📦 All Batches</option>
+        </select>
+        <button class="btn btn--ghost btn--sm" style="white-space: nowrap;" onclick="Views._clearDashboardCandidateFilters()">✕ Clear</button>
+      </div>
+
       <div class="table-card" style="margin-bottom:0;border-bottom-left-radius:0;border-bottom-right-radius:0;border-bottom:none">
 
         <!-- Toolbar: search + filter toggle -->
         <div class="table-toolbar">
           <span class="table-toolbar__title" style="font-size:.85rem;opacity:.7">🔎 Filter Candidates</span>
           <div class="table-toolbar__actions">
-            <div class="search-input">
-              <span class="search-input__icon" aria-hidden="true">🔍</span>
-              <input type="search" id="dash-search-input" placeholder="Search name, email, position…"
-                     aria-label="Search candidates" oninput="Views._applyDashboardAllFilters()" autocomplete="off">
-            </div>
             <button class="btn btn--outline btn--sm" id="dash-adv-filter-btn"
                     onclick="Views._toggleDashAdvancedFilters()" aria-expanded="false">⚙ Filters</button>
             <button class="btn btn--ghost btn--sm" id="dash-clear-filters-btn" style="display:none"
@@ -1106,6 +1122,7 @@
 
         if (candsRes.success) {
           App.setState({ candidates: candsRes.data, filteredCandidates: candsRes.data });
+          Views._populateCandidateFilterDropdowns(candsRes.data);
           Views._renderDashboardTable(candsRes.data);
           Views._restoreDashboardFilterState();
 
@@ -1251,7 +1268,12 @@
       const cardFilterFn = Views._buildDashboardCardPredicate(docCompleteness);
 
       // Normalize the search query — trim() ensures whitespace-only = no filter.
-      const query = (document.getElementById('dash-search-input')?.value || '').trim().toLowerCase();
+      const query = (document.getElementById('dash-tb-search')?.value || '').trim().toLowerCase();
+      const posFilter = document.getElementById('dash-tb-pos')?.value || '';
+      const statusTbFilter = document.getElementById('dash-tb-status')?.value || '';
+      const natFilter = document.getElementById('dash-tb-nat')?.value || '';
+      const batchFilter = document.getElementById('dash-tb-batch')?.value || '';
+
       const deptFilter = document.getElementById('dash-dept-filter')?.value || '';
       const completionMin = parseInt(document.getElementById('dash-completion-min')?.value || '0', 10);
       const statusFilters = Views._dashStatusFilters || [];
@@ -1264,8 +1286,15 @@
         // Text search
         const matchQ = !query ||
           c.FullName?.toLowerCase().includes(query) ||
-          c.Email?.toLowerCase().includes(query) ||
-          c.Position?.toLowerCase().includes(query);
+          c.HR_Code?.toLowerCase().includes(query) ||
+          c.CandidateID?.toLowerCase().includes(query) ||
+          c.Email?.toLowerCase().includes(query);
+
+        const matchPos = !posFilter || c.Position === posFilter;
+        const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
+        const matchNat = !natFilter || c.Nationality === natFilter;
+        const matchBatch = !batchFilter || c.Batch_Number === batchFilter;
+        if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;
         // Include status
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Exclude status
@@ -1428,10 +1457,23 @@
         (Views._dashStatusFilters || []).length > 0 ||
         (Views._dashExcludeStatusFilters || []).length > 0 ||
         (Views._dashDocFilters || []).length > 0 ||
-        !!(document.getElementById('dash-search-input')?.value) ||
+        !!(document.getElementById('dash-tb-search')?.value) ||
+        !!(document.getElementById('dash-tb-pos')?.value) ||
+        !!(document.getElementById('dash-tb-status')?.value) ||
+        !!(document.getElementById('dash-tb-nat')?.value) ||
+        !!(document.getElementById('dash-tb-batch')?.value) ||
         !!(document.getElementById('dash-dept-filter')?.value);
       const btn = document.getElementById('dash-clear-filters-btn');
       if (btn) btn.style.display = hasFilters ? '' : 'none';
+    },
+
+    _clearDashboardCandidateFilters() {
+      if (document.getElementById('dash-tb-search')) document.getElementById('dash-tb-search').value = '';
+      if (document.getElementById('dash-tb-pos')) document.getElementById('dash-tb-pos').selectedIndex = 0;
+      if (document.getElementById('dash-tb-status')) document.getElementById('dash-tb-status').selectedIndex = 0;
+      if (document.getElementById('dash-tb-nat')) document.getElementById('dash-tb-nat').selectedIndex = 0;
+      if (document.getElementById('dash-tb-batch')) document.getElementById('dash-tb-batch').selectedIndex = 0;
+      this._applyDashboardAllFilters();
     },
 
     _clearDashboardAllFilters() {
@@ -1451,8 +1493,11 @@
       if (range) range.value = '0';
       const rangeVal = document.getElementById('dash-completion-min-val');
       if (rangeVal) rangeVal.textContent = '0%';
-      const search = document.getElementById('dash-search-input');
-      if (search) search.value = '';
+      if (document.getElementById('dash-tb-search')) document.getElementById('dash-tb-search').value = '';
+      if (document.getElementById('dash-tb-pos')) document.getElementById('dash-tb-pos').selectedIndex = 0;
+      if (document.getElementById('dash-tb-status')) document.getElementById('dash-tb-status').selectedIndex = 0;
+      if (document.getElementById('dash-tb-nat')) document.getElementById('dash-tb-nat').selectedIndex = 0;
+      if (document.getElementById('dash-tb-batch')) document.getElementById('dash-tb-batch').selectedIndex = 0;
       // Also clear KPI card selection
       Views._clearDashboardFilter();
       Views._dashUpdateClearButton();
@@ -1625,17 +1670,33 @@
         </div>
       </div>
 
+      <div class="candidate-filter-bar">
+        <div class="search-input" style="flex: 1; min-width: 200px;">
+          <span class="search-input__icon" aria-hidden="true">🔍</span>
+          <input type="search" id="cand-tb-search" placeholder="Name, HR Code, ID..."
+                 aria-label="Search candidates" oninput="Views._applyCandidateFilters()" autocomplete="off">
+        </div>
+        <select id="cand-tb-pos" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
+          <option value="">💼 All Positions</option>
+        </select>
+        <select id="cand-tb-status" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
+          <option value="">📋 All Statuses</option>
+        </select>
+        <select id="cand-tb-nat" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
+          <option value="">🌍 All Nationalities</option>
+        </select>
+        <select id="cand-tb-batch" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
+          <option value="">📦 All Batches</option>
+        </select>
+        <button class="btn btn--ghost btn--sm" style="white-space: nowrap;" onclick="Views._clearAllCandidateFilters()">✕ Clear</button>
+      </div>
+
       <div class="table-card">
 
         <!-- ── Toolbar: count + search + filter toggles ── -->
         <div class="table-toolbar">
           <span class="table-toolbar__title" id="cands-count">Loading…</span>
           <div class="table-toolbar__actions">
-            <div class="search-input">
-              <span class="search-input__icon" aria-hidden="true">🔍</span>
-              <input type="search" id="search-input" placeholder="Search name, email, position…"
-                     aria-label="Search candidates" oninput="Views._filterCandidates()" autocomplete="off">
-            </div>
             <button class="btn btn--outline btn--sm" id="adv-filter-btn"
                     onclick="Views._toggleAdvancedFilters()" aria-expanded="false">⚙ Filters</button>
             <button class="btn btn--ghost btn--sm" id="clear-filters-btn" style="display:none"
@@ -1791,6 +1852,7 @@
         const res = await GAS.call('api_getAllCandidates');
         if (!res.success) throw new Error(res.error);
         App.setState({ candidates: res.data, filteredCandidates: res.data });
+        Views._populateCandidateFilterDropdowns(res.data);
 
         // Fetch upcoming events in the background to populate priority dots
         GAS.call('api_getAllUpcomingEvents').then(evRes => {
@@ -1878,13 +1940,76 @@
       }
     },
 
+    // ── Unified Multi-Condition Filtering ──
+    _applyCandidateFilters() {
+      this._filterCandidates();
+    },
+
+    _populateCandidateFilterDropdowns(candidates) {
+      if (!candidates || !candidates.length) return;
+
+      const posSet = new Set();
+      const statusSet = new Set();
+      const natSet = new Set();
+      const batchSet = new Set();
+
+      candidates.forEach(c => {
+        if (c.Position) posSet.add(c.Position.trim());
+        if (c.CurrentStatus) statusSet.add(c.CurrentStatus.trim());
+        if (c.Nationality) natSet.add(c.Nationality.trim());
+        const batchVal = Views._getBatchValue(c);
+        if (batchVal) batchSet.add(batchVal.trim());
+      });
+
+      const fill = (elementId, set) => {
+        const select = document.getElementById(elementId);
+        if (!select) return;
+        const defaultOption = select.options[0];
+        select.innerHTML = '';
+        if (defaultOption) select.appendChild(defaultOption);
+
+        [...set].sort((a, b) => a.localeCompare(b)).forEach(val => {
+          const opt = document.createElement('option');
+          opt.value = val;
+          opt.textContent = val;
+          select.appendChild(opt);
+        });
+      };
+
+      // Populate Candidates Page Dropdowns
+      fill('cand-tb-pos', posSet);
+      fill('cand-tb-status', statusSet);
+      fill('cand-tb-nat', natSet);
+      fill('cand-tb-batch', batchSet);
+
+      // Populate Dashboard Dropdowns
+      fill('dash-tb-pos', posSet);
+      fill('dash-tb-status', statusSet);
+      fill('dash-tb-nat', natSet);
+      fill('dash-tb-batch', batchSet);
+    },
+
+    _clearAllCandidateFilters() {
+      if (document.getElementById('cand-tb-search')) document.getElementById('cand-tb-search').value = '';
+      if (document.getElementById('cand-tb-pos')) document.getElementById('cand-tb-pos').selectedIndex = 0;
+      if (document.getElementById('cand-tb-status')) document.getElementById('cand-tb-status').selectedIndex = 0;
+      if (document.getElementById('cand-tb-nat')) document.getElementById('cand-tb-nat').selectedIndex = 0;
+      if (document.getElementById('cand-tb-batch')) document.getElementById('cand-tb-batch').selectedIndex = 0;
+      this._filterCandidates();
+    },
+
     // ── Combined filter + sort ──
     // ── Combined filter + sort — always reads App.state.candidates as the source ──
     // NEVER filters from App.state.filteredCandidates to prevent stale-base bugs where
     // a zero-result search makes subsequent filter changes start from an empty list.
     _filterCandidates() {
       // Normalize the search query — trim() ensures whitespace-only input = no filter.
-      const query = (document.getElementById('search-input')?.value || '').trim().toLowerCase();
+      const query = (document.getElementById('cand-tb-search')?.value || '').trim().toLowerCase();
+      const posFilter = document.getElementById('cand-tb-pos')?.value || '';
+      const statusTbFilter = document.getElementById('cand-tb-status')?.value || '';
+      const natFilter = document.getElementById('cand-tb-nat')?.value || '';
+      const batchFilter = document.getElementById('cand-tb-batch')?.value || '';
+
       const deptFilter = document.getElementById('dept-filter')?.value || '';
       const completionMin = parseInt(document.getElementById('completion-min')?.value || '0', 10);
       const { statusFilters, docFilters, docCompleteness, sortCol, sortDir, excludeStatusFilters } = App.state;
@@ -1894,8 +2019,14 @@
         // Text search (empty query passes all)
         const matchQ = !query ||
           c.FullName?.toLowerCase().includes(query) ||
-          c.Email?.toLowerCase().includes(query) ||
-          c.Position?.toLowerCase().includes(query);
+          c.HR_Code?.toLowerCase().includes(query) ||
+          c.CandidateID?.toLowerCase().includes(query) ||
+          c.Email?.toLowerCase().includes(query);
+
+        const matchPos = !posFilter || c.Position === posFilter;
+        const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
+        const matchNat = !natFilter || c.Nationality === natFilter;
+        const matchBatch = !batchFilter || c.Batch_Number === batchFilter;
         // Multi-select status INCLUDE (empty array = all pass)
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Multi-select status EXCLUDE (empty array = nothing excluded)
@@ -1919,7 +2050,7 @@
           ? (completionMin === 0)  // show unavailable only when no min threshold is demanded
           : (!comp || comp.pct >= completionMin);
 
-        return matchQ && matchS && matchExcl && matchD && matchDoc && matchCompletion;
+        return matchQ && matchPos && matchStatusTb && matchNat && matchBatch && matchS && matchExcl && matchD && matchDoc && matchCompletion;
       });
 
       // Sorting — does not change the count, only the order.
@@ -2277,7 +2408,7 @@
 
     _renderCandidatesTable(data) {
       const count = document.getElementById('cands-count');
-      if (count) count.textContent = `${data.length} Candidate${data.length !== 1 ? 's' : ''}`;
+      if (count) count.textContent = `${data.length} Candidate${data.length !== 1 ? 's' : ''} found`;
       const footer = document.getElementById('table-footer');
       if (footer) footer.textContent = `Showing ${data.length} of ${App.state.candidates.length} candidates`;
       document.getElementById('candidates-table').innerHTML = data.length
@@ -2819,6 +2950,7 @@
           Views._filterCandidates();
         } else if (App.state.currentView === 'dashboard') {
           Views._applyDashboardAllFilters();
+          Views._renderKpiSectionsWithBatchFilter();
         }
 
         const completenessEl = document.getElementById('doc-completeness');

@@ -1996,4 +1996,33 @@ body.dark-mode .dash-export-item:hover { background: #2a2a2a; }
   margin-left: 4px;
   color: #3b82f6;
 }
+
+/* ── Candidate Filter Bar ── */
+.candidate-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  align-items: center;
+}
+
+.candidate-filter-bar > * {
+  flex: 1 1 150px;
+}
+
+/* Ensure focus rings and text legibility in dark mode */
+body.dark-mode .candidate-filter-bar {
+  background: var(--bg-surface-dark, #1e293b);
+  border-color: var(--border-dark, #334155);
+}
+
+.candidate-filter-bar input:focus,
+.candidate-filter-bar select:focus {
+  outline: 2px solid var(--border-focus, #3b82f6);
+  outline-offset: 2px;
+}
 </style>
