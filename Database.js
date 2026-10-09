@@ -617,13 +617,15 @@ function api_reviewDocument(candidateId, documentId, approvalStatus, remarks) {
 }
 
 /**
- * Updates the passport expiry date for a candidate.
- * @param {string} candidateId 
- * @param {string} expiryDate - YYYY-MM-DD
+ * Updates or sets ExpiryDate for any document type (Passport, Medical Examination, Medical Analysis).
  */
-function api_updatePassportExpiryDate(candidateId, expiryDate) {
+function api_updateDocExpiryDate(candidateId, docType, expiryDate) {
   const auth = requireRole_(['Admin', 'HR', 'Coordinator']);
   if (!auth.authorized) return { success: false, error: auth.error };
+
+  if (!candidateId || !docType || !expiryDate) {
+    return { success: false, error: 'Candidate ID, Document Type, and Expiry Date are required.' };
+  }
 
   try {
     const sheet = getSheet_(SHEET_DOCUMENTS);
@@ -639,18 +641,19 @@ function api_updatePassportExpiryDate(candidateId, expiryDate) {
 
     let updated = false;
     for (let i = 1; i < data.length; i++) {
-      if (data[i][candidateIdCol] === candidateId && data[i][docTypeCol] === 'Passport') {
+      if (data[i][candidateIdCol] === candidateId && data[i][docTypeCol] === docType) {
         sheet.getRange(i + 1, expiryDateCol + 1).setValue(expiryDate);
         updated = true;
+        break;
       }
     }
 
     if (updated) {
-      api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Passport Expiry Date Updated: ' + expiryDate);
+      api_writeLog_(candidateId, Session.getActiveUser().getEmail(), docType + ' Expiry Date Updated: ' + expiryDate);
       CacheService.getScriptCache().remove('dashboard_data');
-      return { success: true };
+      return { success: true, candidateId, docType, expiryDate };
     } else {
-      return { success: false, error: 'Passport document not found for this candidate.' };
+      return { success: false, error: docType + ' document record not found for this candidate.' };
     }
   } catch (e) {
     Logger.log(e);

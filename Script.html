@@ -4409,20 +4409,17 @@
       Views._dcRender();
     },
 
-    _openPassportExpiryModal(candidateId, currentExpiry) {
+    _openDocExpiryModal(candidateId, docType, currentExpiry) {
       let defaultY = '', defaultM = '', defaultD = '';
       if (currentExpiry && /^\d{4}-\d{2}-\d{2}$/.test(currentExpiry)) {
         const parts = currentExpiry.split('-');
-        defaultY = parts[0];
-        defaultM = parts[1];
-        defaultD = parts[2];
+        defaultY = parts[0]; defaultM = parts[1]; defaultD = parts[2];
       }
 
       const currentYear = new Date().getFullYear();
       const yearOptions = Array.from({ length: 13 }, (_, i) => {
         const y = currentYear + i;
-        const shortY = String(y).slice(-2);
-        return `<option value="${y}" ${String(y) === defaultY ? 'selected' : ''}>'${shortY}</option>`;
+        return `<option value="${y}" ${String(y) === defaultY ? 'selected' : ''}>'${String(y).slice(-2)}</option>`;
       }).join('');
 
       const monthOptions = Array.from({ length: 12 }, (_, i) => {
@@ -4437,35 +4434,26 @@
 
       Modal.open(`
       <div class="modal__header">
-        <h2 class="modal__title">📅 Set Passport Expiry Date</h2>
+        <h2 class="modal__title">📅 Set ${escHtml(docType)} Expiry Date</h2>
         <button class="modal__close" onclick="Modal.close()" aria-label="Close">✕</button>
       </div>
       <div class="modal__body">
         <div class="form-group">
           <label class="form-label">Expiry Date (DD / MM / YY) <span class="required">*</span></label>
           <div class="passport-date-picker-group">
-            <select class="form-select passport-date-select" id="select-expiry-day">
-              <option value="">DD</option>
-              ${dayOptions}
-            </select>
-            <select class="form-select passport-date-select" id="select-expiry-month">
-              <option value="">MM</option>
-              ${monthOptions}
-            </select>
-            <select class="form-select passport-date-select" id="select-expiry-year">
-              <option value="">YY</option>
-              ${yearOptions}
-            </select>
+            <select class="form-select passport-date-select" id="select-expiry-day"><option value="">DD</option>${dayOptions}</select>
+            <select class="form-select passport-date-select" id="select-expiry-month"><option value="">MM</option>${monthOptions}</select>
+            <select class="form-select passport-date-select" id="select-expiry-year"><option value="">YY</option>${yearOptions}</select>
           </div>
         </div>
       </div>
       <div class="modal__footer">
         <button class="btn btn--outline" onclick="Modal.close()">Cancel</button>
-        <button class="btn btn--primary" id="save-passport-btn" onclick="Views._savePassportExpiry('${candidateId}')">Save Expiry Date</button>
+        <button class="btn btn--primary" id="save-doc-expiry-btn" onclick="Views._saveDocExpiry('${candidateId}', '${docType}')">Save Expiry Date</button>
       </div>`);
     },
-    
-    async _savePassportExpiry(candidateId) {
+
+    async _saveDocExpiry(candidateId, docType) {
       const day = document.getElementById('select-expiry-day')?.value;
       const month = document.getElementById('select-expiry-month')?.value;
       const year = document.getElementById('select-expiry-year')?.value;
@@ -4475,11 +4463,7 @@
         return;
       }
 
-      const yNum = parseInt(year, 10);
-      const mNum = parseInt(month, 10);
-      const dNum = parseInt(day, 10);
-
-      // Validate Days per Month
+      const yNum = parseInt(year, 10), mNum = parseInt(month, 10), dNum = parseInt(day, 10);
       const daysInMonth = new Date(yNum, mNum, 0).getDate();
       if (dNum > daysInMonth) {
         Toast.warning(`Invalid date: Selected month only has ${daysInMonth} days.`);
@@ -4487,21 +4471,21 @@
       }
 
       const expiry = `${year}-${month}-${day}`;
-      const btn = document.getElementById('save-passport-btn');
+      const btn = document.getElementById('save-doc-expiry-btn');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span> Saving...';
 
       try {
-        const res = await GAS.call('api_updatePassportExpiryDate', candidateId, expiry);
+        const res = await GAS.call('api_updateDocExpiryDate', candidateId, docType, expiry);
         if (!res.success) throw new Error(res.error);
 
-        Toast.success('Passport expiry updated.');
+        Toast.success(`${docType} expiry updated.`);
         Modal.close();
 
         if (App.state.documentsCenter && App.state.documentsCenter.loaded) {
           const cand = App.state.documentsCenter.candidates.find(c => c.candidateId === candidateId);
-          if (cand && cand.docDetails && cand.docDetails['Passport']) {
-            cand.docDetails['Passport'].expiryDate = expiry;
+          if (cand && cand.docDetails && cand.docDetails[docType]) {
+            cand.docDetails[docType].expiryDate = expiry;
             Views._dcRender();
           } else {
             Views._dcLoad();
@@ -4529,30 +4513,30 @@
       
       let refDateStr = null;
       let maxDays = 0;
+      let diffDays = 0;
+      const isExpirableDoc = docType === 'Passport' || docType === 'Medical Examination' || docType === 'Medical Analysis';
       
-      if (docType === 'Passport') {
-        if (!doc.expiryDate) {
-          return `<div class="doc-cell-badge doc-cell-badge--needs-action" title="Needs Expiry Date" onclick="Views._openPassportExpiryModal('${cand.candidateId}', '')">Set Date ⚠️</div>`;
-        }
+      if (isExpirableDoc && doc.expiryDate) {
+        // Primary Rule: ExpiryDate exists (always applies to Passport if set, and optionally Medical docs)
         refDateStr = doc.expiryDate;
+        const refDate = new Date(refDateStr);
+        const diffTime = refDate.getTime() - now.getTime();
+        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      } else if (docType === 'Passport') {
+        // Passport MUST have expiry date
+        return `<div class="doc-cell-badge doc-cell-badge--needs-action" title="Needs Expiry Date" onclick="Views._openDocExpiryModal('${cand.candidateId}', '${docType}', '')">Set Date ⚠️</div>`;
       } else {
+        // Fallback Rule for Medical docs or Visa
         refDateStr = doc.issueDate || doc.uploadDate;
         if (docType === 'Medical Examination') maxDays = 60;
         else if (docType === 'Medical Analysis') maxDays = 90;
         else if (docType === 'Visa') maxDays = 90;
-      }
-      
-      if (!refDateStr && docType !== 'Passport') {
-         return `<div class="doc-cell-badge doc-cell-badge--valid" title="Valid">Valid</div>`;
-      }
-      
-      const refDate = new Date(refDateStr);
-      let diffDays = 0;
-      
-      if (docType === 'Passport') {
-        const diffTime = refDate.getTime() - now.getTime();
-        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      } else {
+        
+        if (!refDateStr) {
+          return `<div class="doc-cell-badge doc-cell-badge--valid" title="Valid">Valid</div>`;
+        }
+        
+        const refDate = new Date(refDateStr);
         const expDate = new Date(refDate);
         expDate.setDate(expDate.getDate() + maxDays);
         const diffTime = expDate.getTime() - now.getTime();
@@ -4574,8 +4558,8 @@
       }
       
       let tooltip = `Issue: ${doc.issueDate || 'N/A'}&#10;Upload: ${doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : 'N/A'}&#10;Expiry: ${doc.expiryDate || 'N/A'}`;
-      if (docType === 'Passport') {
-        return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}" onclick="Views._openPassportExpiryModal('${cand.candidateId}', '${doc.expiryDate}')">${badgeText}</div>`;
+      if (isExpirableDoc) {
+        return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}" onclick="Views._openDocExpiryModal('${cand.candidateId}', '${docType}', '${doc.expiryDate || ''}')">${badgeText}</div>`;
       }
       return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}">${badgeText}</div>`;
     },
