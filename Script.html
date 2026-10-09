@@ -4721,6 +4721,10 @@
       if (candidateIds.length === 0) { Toast.show('Select at least one candidate.', 'warning'); return; }
       if (docTypes.length === 0) { Toast.show('Select at least one document type.', 'warning'); return; }
 
+      if (docTypes.length === 1) {
+        Toast.show('Single document selected: Files will be downloaded flat named by candidate full name.', 'info');
+      }
+
       // ── Generate a unique batch ID for progress tracking ──
       const batchId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 

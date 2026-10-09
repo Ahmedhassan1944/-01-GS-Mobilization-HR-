@@ -378,6 +378,8 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     // Each file accounts for (60 / totalFiles)% of the bar.
     var blobs = [];
     var uniqueCandidatesFound = {};
+    var isSingleDocType = docTypes.length === 1;
+    var usedFileNames = {};
 
     for (var k = 0; k < matchedDocs.length; k++) {
       var doc    = matchedDocs[k];
@@ -397,8 +399,28 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
         try {
           var file = DriveApp.getFileById(fileId);
           var blob = file.getBlob();
-          var safeCandName = doc.candidateName.replace(/[\/\\]/g, '_');
-          blob.setName(safeCandName + '/' + doc.docType + '_' + doc.fileName);
+          
+          if (isSingleDocType) {
+            // Flat mode: rename to candidate Full Name
+            var cleanName = (doc.candidateName || 'Candidate').replace(/[\\/:*?"<>|]/g, '_').trim();
+            var ext = doc.fileName.indexOf('.') !== -1 ? doc.fileName.split('.').pop() : 'pdf';
+            var baseFileName = cleanName + '.' + ext;
+            
+            // Disambiguate collision
+            if (usedFileNames[baseFileName]) {
+              usedFileNames[baseFileName]++;
+              baseFileName = cleanName + ' (' + doc.candidateId.slice(0, 6) + ').' + ext;
+            } else {
+              usedFileNames[baseFileName] = 1;
+            }
+            
+            blob.setName(baseFileName);
+          } else {
+            // Hierarchical mode: candidate subfolder
+            var safeCandName = doc.candidateName.replace(/[\/\\]/g, '_');
+            blob.setName(safeCandName + '/' + doc.docType + '_' + doc.fileName);
+          }
+          
           blobs.push(blob);
           uniqueCandidatesFound[doc.candidateId] = true;
         } catch (fileErr) {
@@ -423,7 +445,9 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     });
 
     var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var zipName = 'Documents_' + dateStr + '.zip';
+    var zipName = isSingleDocType 
+      ? 'Mobilization_' + docTypes[0].replace(/\s+/g, '_') + '_' + dateStr + '.zip'
+      : 'Documents_' + dateStr + '.zip';
     var zip     = Utilities.zip(blobs, zipName);
 
     // ── Stage 78%: ZIP archive built, now encoding ─────────────────────────
