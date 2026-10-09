@@ -3242,7 +3242,7 @@
       }
     },
 
-    _openUploadModal(candidateId, folderId) {
+    _openUploadModal(candidateId, folderId, preselectedDocType = '') {
       const docTypes = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV', 'Other'];
       Modal.open(`
       <div class="modal__header">
@@ -3251,11 +3251,15 @@
       </div>
       <div class="modal__body">
         <div class="form-grid" style="gap:var(--sp-3)">
-          <div class="form-group col-span-2">
+          <div class="form-group">
             <label class="form-label" for="doc-type">Document Type <span class="required">*</span></label>
             <select class="form-select" id="doc-type">
-              ${docTypes.map(t => `<option value="${t}">${t}</option>`).join('')}
+              ${docTypes.map(t => `<option value="${t}" ${t === preselectedDocType ? 'selected' : ''}>${t}</option>`).join('')}
             </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="doc-issue-date">Issue / Exam Date</label>
+            <input type="date" class="form-control" id="doc-issue-date">
           </div>
           <div class="form-group col-span-2">
             <label class="form-label">File <span class="required">*</span></label>
@@ -3293,6 +3297,7 @@
     async _submitUpload(candidateId, folderId) {
       const fileInput = document.getElementById('upload-file');
       const docType = document.getElementById('doc-type')?.value;
+      const issueDate = document.getElementById('doc-issue-date')?.value || '';
       const file = fileInput?.files[0];
 
       if (!file) { Toast.warning('Please select a file.'); return; }
@@ -3331,7 +3336,7 @@
           actualFolderId = folderRes.folderId;
         }
 
-        const res = await GAS.call('api_uploadFileToDrive', candidateId, actualFolderId, docType, file.name, base64, file.type);
+        const res = await GAS.call('api_uploadFileToDrive', candidateId, actualFolderId, docType, file.name, base64, file.type, issueDate);
         if (!res.success) throw new Error(res.error);
 
         bar.style.width = '100%';
@@ -3340,8 +3345,12 @@
         setTimeout(() => {
           Modal.close();
           Toast.success(`${docType} uploaded successfully!`);
-          Views._loadCandidateDocuments(candidateId);
-          Views._loadCandidateAudit(candidateId);
+          if (App.state.documentsCenter && App.state.documentsCenter.loaded && document.getElementById('dc-tbody')) {
+            Views._dcLoad(); // Reload list to update badges
+          } else {
+            Views._loadCandidateDocuments(candidateId);
+            Views._loadCandidateAudit(candidateId);
+          }
         }, 500);
       } catch (err) {
         Toast.error('Upload failed: ' + err.message);
@@ -4262,12 +4271,10 @@
               <th style="padding:10px 12px;cursor:pointer;user-select:none;" onclick="Views._dcSort('status')" id="dc-th-status" title="Sort by Status">
                 Status <span class="sort-indicator" id="dc-sort-status"></span>
               </th>
-              <th style="padding:10px 12px;text-align:center;cursor:pointer;user-select:none;" onclick="Views._dcSort('available')" id="dc-th-available" title="Sort by Available">
-                📄 Available <span class="sort-indicator" id="dc-sort-available"></span>
-              </th>
-              <th style="padding:10px 12px;text-align:center;cursor:pointer;user-select:none;" onclick="Views._dcSort('missing')" id="dc-th-missing" title="Sort by Missing">
-                ⚠️ Missing <span class="sort-indicator" id="dc-sort-missing"></span>
-              </th>
+              <th style="padding:10px 12px;text-align:center;">Passport</th>
+              <th style="padding:10px 12px;text-align:center;">Visa</th>
+              <th style="padding:10px 12px;text-align:center;">Medical Exam</th>
+              <th style="padding:10px 12px;text-align:center;">Medical Analysis</th>
               <th style="padding:10px 12px;text-align:center;">Actions</th>
             </tr>
           </thead>
@@ -4462,6 +4469,117 @@
       Views._dcRender();
     },
 
+    _openPassportExpiryModal(candidateId, currentExpiry) {
+      Modal.open(`
+      <div class="modal__header">
+        <h2 class="modal__title">📅 Set Passport Expiry Date</h2>
+        <button class="modal__close" onclick="Modal.close()" aria-label="Close">✕</button>
+      </div>
+      <div class="modal__body">
+        <div class="form-group">
+          <label class="form-label" for="passport-expiry-date">Expiry Date <span class="required">*</span></label>
+          <input type="date" class="form-control" id="passport-expiry-date" value="${currentExpiry || ''}">
+        </div>
+      </div>
+      <div class="modal__footer">
+        <button class="btn btn--outline" onclick="Modal.close()">Cancel</button>
+        <button class="btn btn--primary" id="save-passport-btn" onclick="Views._savePassportExpiry('${candidateId}')">Save</button>
+      </div>`);
+    },
+    
+    async _savePassportExpiry(candidateId) {
+      const expiry = document.getElementById('passport-expiry-date').value;
+      if (!expiry) { Toast.warning('Please select an expiry date.'); return; }
+      const btn = document.getElementById('save-passport-btn');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Saving...';
+      try {
+        const res = await GAS.call('api_updatePassportExpiryDate', candidateId, expiry);
+        if (!res.success) throw new Error(res.error);
+        Toast.success('Passport expiry updated.');
+        Modal.close();
+        if (App.state.documentsCenter && App.state.documentsCenter.loaded) {
+          const cand = App.state.documentsCenter.candidates.find(c => c.candidateId === candidateId);
+          if (cand && cand.docDetails && cand.docDetails['Passport']) {
+             cand.docDetails['Passport'].expiryDate = expiry;
+             Views._dcRender();
+          } else {
+             Views._dcLoad();
+          }
+        }
+      } catch (err) {
+        Toast.error(err.message);
+        btn.disabled = false;
+        btn.innerHTML = 'Save';
+      }
+    },
+
+    _renderDocBadge(cand, docType) {
+      const summary = cand.docSummary || {};
+      const details = cand.docDetails || {};
+      
+      const status = summary[docType] || 'Missing';
+      if (status === 'Missing') {
+        return `<div class="doc-cell-badge doc-cell-badge--missing" title="Document missing" onclick="Views._openUploadModal('${cand.candidateId}', '${cand.driveFolderId || ''}', '${docType}')">Missing</div>`;
+      }
+      
+      const doc = details[docType] || {};
+      const now = new Date();
+      now.setHours(0,0,0,0);
+      
+      let refDateStr = null;
+      let maxDays = 0;
+      
+      if (docType === 'Passport') {
+        if (!doc.expiryDate) {
+          return `<div class="doc-cell-badge doc-cell-badge--needs-action" title="Needs Expiry Date" onclick="Views._openPassportExpiryModal('${cand.candidateId}', '')">Set Date ⚠️</div>`;
+        }
+        refDateStr = doc.expiryDate;
+      } else {
+        refDateStr = doc.issueDate || doc.uploadDate;
+        if (docType === 'Medical Examination') maxDays = 60;
+        else if (docType === 'Medical Analysis') maxDays = 90;
+        else if (docType === 'Visa') maxDays = 90;
+      }
+      
+      if (!refDateStr && docType !== 'Passport') {
+         return `<div class="doc-cell-badge doc-cell-badge--valid" title="Valid">Valid</div>`;
+      }
+      
+      const refDate = new Date(refDateStr);
+      let diffDays = 0;
+      
+      if (docType === 'Passport') {
+        const diffTime = refDate.getTime() - now.getTime();
+        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      } else {
+        const expDate = new Date(refDate);
+        expDate.setDate(expDate.getDate() + maxDays);
+        const diffTime = expDate.getTime() - now.getTime();
+        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      }
+      
+      let badgeClass = '';
+      let badgeText = '';
+      
+      if (diffDays <= 0) {
+        badgeClass = 'doc-cell-badge--expired';
+        badgeText = `Expired (${diffDays}d)`;
+      } else if (diffDays <= 30) {
+        badgeClass = 'doc-cell-badge--expiring';
+        badgeText = `${diffDays}d`;
+      } else {
+        badgeClass = 'doc-cell-badge--valid';
+        badgeText = `${diffDays}d`;
+      }
+      
+      let tooltip = `Issue: ${doc.issueDate || 'N/A'}&#10;Upload: ${doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : 'N/A'}&#10;Expiry: ${doc.expiryDate || 'N/A'}`;
+      if (docType === 'Passport') {
+        return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}" onclick="Views._openPassportExpiryModal('${cand.candidateId}', '${doc.expiryDate}')">${badgeText}</div>`;
+      }
+      return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}">${badgeText}</div>`;
+    },
+
     _dcRender() {
       const dc = App.state.documentsCenter;
       const tbody = document.getElementById('dc-tbody');
@@ -4515,28 +4633,16 @@
             <span style="font-size:.75rem;font-weight:600;color:${statusColor};white-space:nowrap;">${c.status}</span>
           </td>
           <td style="padding:10px 12px;text-align:center;">
-            <span class="doc-count doc-count--available">
-              ${c.availableCount}
-              <span class="doc-count__tooltip doc-count__tooltip--available">
-                <span class="doc-count__tooltip-list">
-                  ${c.availableCount > 0
-            ? Object.entries(c.docSummary || {}).filter(([, s]) => s === 'Available').map(([type]) => `<span class="doc-count__tooltip-item">${escHtml(type)}</span>`).join('')
-            : '<span class="doc-count__tooltip-item">No available documents</span>'}
-                </span>
-              </span>
-            </span>
+            ${Views._renderDocBadge(c, 'Passport')}
           </td>
           <td style="padding:10px 12px;text-align:center;">
-            <span class="doc-count doc-count--missing">
-              ${c.missingCount}
-              <span class="doc-count__tooltip doc-count__tooltip--missing">
-                <span class="doc-count__tooltip-list">
-                  ${c.missingCount > 0
-            ? Object.entries(c.docSummary || {}).filter(([, s]) => s === 'Missing').map(([type]) => `<span class="doc-count__tooltip-item">${escHtml(type)}</span>`).join('')
-            : '<span class="doc-count__tooltip-item">No missing documents</span>'}
-                </span>
-              </span>
-            </span>
+            ${Views._renderDocBadge(c, 'Visa')}
+          </td>
+          <td style="padding:10px 12px;text-align:center;">
+            ${Views._renderDocBadge(c, 'Medical Examination')}
+          </td>
+          <td style="padding:10px 12px;text-align:center;">
+            ${Views._renderDocBadge(c, 'Medical Analysis')}
           </td>
           <td style="padding:10px 12px;text-align:center;">
             <button class="btn btn--outline btn--sm" onclick="Views._dcPreviewMenu('${c.candidateId}')">👁 Preview</button>

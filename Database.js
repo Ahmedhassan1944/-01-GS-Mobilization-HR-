@@ -547,6 +547,48 @@ function api_reviewDocument(candidateId, documentId, approvalStatus, remarks) {
 }
 
 /**
+ * Updates the passport expiry date for a candidate.
+ * @param {string} candidateId 
+ * @param {string} expiryDate - YYYY-MM-DD
+ */
+function api_updatePassportExpiryDate(candidateId, expiryDate) {
+  const auth = requireRole_(['Admin', 'HR', 'Coordinator']);
+  if (!auth.authorized) return { success: false, error: auth.error };
+
+  try {
+    const sheet = getSheet_(SHEET_DOCUMENTS);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const candidateIdCol = headers.indexOf('CandidateID');
+    const docTypeCol = headers.indexOf('DocType');
+    const expiryDateCol = headers.indexOf('ExpiryDate');
+
+    if (expiryDateCol === -1) {
+      return { success: false, error: 'ExpiryDate column missing in database.' };
+    }
+
+    let updated = false;
+    for (let i = 1; i < data.length; i++) {
+      if (data[i][candidateIdCol] === candidateId && data[i][docTypeCol] === 'Passport') {
+        sheet.getRange(i + 1, expiryDateCol + 1).setValue(expiryDate);
+        updated = true;
+      }
+    }
+
+    if (updated) {
+      api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Passport Expiry Date Updated: ' + expiryDate);
+      CacheService.getScriptCache().remove('dashboard_data');
+      return { success: true };
+    } else {
+      return { success: false, error: 'Passport document not found for this candidate.' };
+    }
+  } catch (e) {
+    Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+/**
  * Returns ALL document records across all candidates.
  * Used by api_getDashboardData for doc-level KPI aggregation.
  */

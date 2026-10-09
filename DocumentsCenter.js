@@ -119,6 +119,9 @@ function api_getDocumentsCenterData(filtersJson) {
     var dTypeIdx = dHeaders.indexOf('DocType');
     var dStatusIdx = dHeaders.indexOf('ApprovalStatus');
     var dDocIdIdx = dHeaders.indexOf('DocumentID');
+    var dIssueIdx = dHeaders.indexOf('IssueDate');
+    var dUploadIdx = dHeaders.indexOf('UploadDate');
+    var dExpiryIdx = dHeaders.indexOf('ExpiryDate');
 
     // Group documents by CandidateID
     var approvedDocsByCand = {};
@@ -128,10 +131,17 @@ function api_getDocumentsCenterData(filtersJson) {
       var dType = (dRow[dTypeIdx] || "").toString();
       var dStatus = (dRow[dStatusIdx] || "").toString();
       var dDocId = (dRow[dDocIdIdx] || "").toString();
+      var dIssue = dIssueIdx !== -1 ? (dRow[dIssueIdx] || "").toString() : "";
+      var dUpload = dUploadIdx !== -1 ? (dRow[dUploadIdx] || "").toString() : "";
+      var dExpiry = dExpiryIdx !== -1 ? (dRow[dExpiryIdx] || "").toString() : "";
       
       if (isDocumentAvailable_({ DocumentID: dDocId, ApprovalStatus: dStatus })) {
         if (!approvedDocsByCand[cId]) approvedDocsByCand[cId] = {};
-        approvedDocsByCand[cId][dType] = true;
+        approvedDocsByCand[cId][dType] = {
+          issueDate: dIssue,
+          uploadDate: dUpload,
+          expiryDate: dExpiry
+        };
       }
     }
 
@@ -166,6 +176,7 @@ function api_getDocumentsCenterData(filtersJson) {
       }
       
       cand.docSummary = docSummary;
+      cand.docDetails = candDocs;
       cand.availableCount = availCount;
       cand.missingCount = missCount;
       

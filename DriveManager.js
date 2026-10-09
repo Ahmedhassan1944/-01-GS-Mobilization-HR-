@@ -95,7 +95,7 @@ function api_createCandidateFolder(candidateId, fullName) {
  * @param {string} base64Data   - The file contents encoded in base64
  * @param {string} mimeType     - 'application/pdf', 'image/jpeg', or 'image/png'
  */
-function api_uploadFileToDrive(candidateId, folderId, docType, fileName, base64Data, mimeType) {
+function api_uploadFileToDrive(candidateId, folderId, docType, fileName, base64Data, mimeType, issueDate = '') {
   const auth = requireRole_(['Admin', 'HR', 'Coordinator']);
   if (!auth.authorized) return { success: false, error: auth.error };
   // ── Server-side validation (never trust the client) ──────────────────
@@ -136,7 +136,7 @@ function api_uploadFileToDrive(candidateId, folderId, docType, fileName, base64D
     const fileUrl = uploadedFile.getUrl();
     
     // Write metadata to the Documents sheet
-    const docId = api_writeDocumentRecord_(candidateId, docType, fileName, fileUrl, mimeType);
+    const docId = api_writeDocumentRecord_(candidateId, docType, fileName, fileUrl, mimeType, issueDate);
     
     api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Document Uploaded: ' + docType);
     // [CACHE POLICY] Write operation — invalidate dashboard cache immediately
@@ -151,32 +151,43 @@ function api_uploadFileToDrive(candidateId, folderId, docType, fileName, base64D
 /**
  * Internal: Writes a new document metadata row into the Documents sheet.
  */
-function api_writeDocumentRecord_(candidateId, docType, fileName, fileUrl, mimeType) {
+function api_writeDocumentRecord_(candidateId, docType, fileName, fileUrl, mimeType, issueDate = '') {
   const sheet = getSheet_(SHEET_DOCUMENTS);
   const docId = generateUUID_();
   const now = new Date().toISOString();
   
   // Determine the current version number for this DocType
   const data = sheet.getDataRange().getValues();
-  const headers = data[0];
+  let headers = data[0];
+  
+  // DEFENSIVE SCHEMA CHECK for new columns
+  let headersChanged = false;
+  if (!headers.includes('IssueDate')) { headers.push('IssueDate'); headersChanged = true; }
+  if (!headers.includes('ExpiryDate')) { headers.push('ExpiryDate'); headersChanged = true; }
+  if (headersChanged) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
+  
   const existingVersions = data
     .filter(row => row[headers.indexOf('CandidateID')] === candidateId &&
                    row[headers.indexOf('DocType')] === docType)
     .length;
   const versionNumber = existingVersions + 1;
   
-  sheet.appendRow([
-    docId,              // DocumentID
-    candidateId,        // CandidateID
-    docType,            // DocType
-    fileName,           // FileName
-    fileUrl,            // FileURL
-    now,                // UploadDate
-    'Available',        // ApprovalStatus (Workflow removed, defaults to Available)
-    '',                 // ApprovedBy
-    versionNumber,      // VersionNumber
-    ''                  // Remarks
-  ]);
+  const newRow = new Array(headers.length).fill('');
+  newRow[headers.indexOf('DocumentID')] = docId;
+  newRow[headers.indexOf('CandidateID')] = candidateId;
+  newRow[headers.indexOf('DocType')] = docType;
+  newRow[headers.indexOf('FileName')] = fileName;
+  newRow[headers.indexOf('FileURL')] = fileUrl;
+  newRow[headers.indexOf('UploadDate')] = now;
+  newRow[headers.indexOf('ApprovalStatus')] = 'Available';
+  newRow[headers.indexOf('ApprovedBy')] = '';
+  newRow[headers.indexOf('VersionNumber')] = versionNumber;
+  newRow[headers.indexOf('Remarks')] = '';
+  newRow[headers.indexOf('IssueDate')] = issueDate;
+  
+  sheet.appendRow(newRow);
   
   return docId;
 }
