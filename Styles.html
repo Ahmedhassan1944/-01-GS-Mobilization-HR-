@@ -2069,4 +2069,26 @@ body.dark-mode .candidate-filter-bar {
   color: #64748b;
   border-color: #e2e8f0;
 }
+
+/* ── Passport Expiry Date Picker ── */
+.passport-date-picker-group {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+.passport-date-select {
+  flex: 1;
+  height: 38px;
+  padding: 0 8px;
+  font-size: 0.88rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+body.dark-mode .passport-date-select {
+  background: var(--bg-surface-dark, #1e293b);
+  border-color: var(--border-dark, #334155);
+  color: var(--text-primary-dark, #f8fafc);
+}
 </style>

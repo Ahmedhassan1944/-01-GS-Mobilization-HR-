@@ -143,6 +143,76 @@ function api_getAllCandidates() {
       headers.forEach((h, i) => obj[h] = row[i]);
       return obj;
     });
+
+    try {
+      const docsSheet = getSheet_('tbl_Documents');
+      const docsData = docsSheet.getDataRange().getValues();
+      const dHeaders = docsData[0] || [];
+      const dCandIdIdx = dHeaders.indexOf('CandidateID');
+      const dTypeIdx = dHeaders.indexOf('DocType');
+      const dStatusIdx = dHeaders.indexOf('ApprovalStatus');
+      const dDocIdIdx = dHeaders.indexOf('DocumentID');
+      
+      const DOC_TYPE_ALIASES = {
+        'academic certificate': 'Academic Certificate',
+        'academiccertificate': 'Academic Certificate',
+        'certificate': 'Academic Certificate',
+        'medical examination': 'Medical Examination',
+        'medicalexamination': 'Medical Examination',
+        'medical analysis': 'Medical Analysis',
+        'medicalanalysis': 'Medical Analysis'
+      };
+
+      const approvedDocsByCand = {};
+      if (docsData.length > 1 && dCandIdIdx > -1) {
+        for (let j = 1; j < docsData.length; j++) {
+          const dRow = docsData[j];
+          const cId = (dRow[dCandIdIdx] || "").toString();
+          let rawType = (dRow[dTypeIdx] || "").toString().trim();
+          const dType = DOC_TYPE_ALIASES[rawType.toLowerCase()] ?? rawType;
+          const dStatus = (dRow[dStatusIdx] || "").toString();
+          const dDocId = (dRow[dDocIdIdx] || "").toString();
+          
+          if (isDocumentAvailable_({ DocumentID: dDocId, ApprovalStatus: dStatus })) {
+            if (!approvedDocsByCand[cId]) approvedDocsByCand[cId] = {};
+            approvedDocsByCand[cId][dType] = true;
+          }
+        }
+      }
+
+      const REQUIRED_DOCS = [
+        'Passport', 'Photo', 'Academic Certificate',
+        'Medical Examination', 'Medical Analysis', 'Visa', 'CV'
+      ];
+
+      candidates.forEach(cand => {
+        const candDocs = approvedDocsByCand[cand.CandidateID] || {};
+        const presentDocs = [];
+        const missingDocs = [];
+        REQUIRED_DOCS.forEach(dt => {
+          if (candDocs[dt]) presentDocs.push(dt);
+          else missingDocs.push(dt);
+        });
+        cand.docCompleteness = {
+          status: 'ok',
+          presentDocs: presentDocs,
+          missingDocs: missingDocs,
+          pct: Math.round((presentDocs.length / 7) * 100)
+        };
+      });
+    } catch (docErr) {
+      Logger.log("Failed to join documents: " + docErr.message);
+      // Fallback if tbl_Documents fails to read
+      candidates.forEach(cand => {
+        cand.docCompleteness = {
+          status: 'unavailable',
+          presentDocs: [],
+          missingDocs: [],
+          pct: null
+        };
+      });
+    }
+
     return { success: true, data: candidates };
   } catch (e) {
     Logger.log(e);

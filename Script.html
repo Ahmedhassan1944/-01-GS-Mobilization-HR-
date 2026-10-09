@@ -1233,10 +1233,6 @@
       // pre-compute a filtered subset and store it in filteredCandidates here.
       Views._applyDashboardAllFilters();
 
-      // Pre-fetch completeness if not yet loaded (needed for hasDoc/missingDoc cards).
-      if (Object.keys(completeness).length === 0 && allCands.length > 0) {
-        Views._loadAllCompleteness(allCands);
-      }
     },
 
     // ── Single-pass Dashboard filter — always starts from App.state.candidates ──
@@ -1823,7 +1819,17 @@
       try {
         const res = await GAS.call('api_getAllCandidates');
         if (!res.success) throw new Error(res.error);
-        App.setState({ candidates: res.data, filteredCandidates: res.data });
+        
+        const compMap = {};
+        res.data.forEach(c => {
+          if (c.docCompleteness) compMap[c.CandidateID] = c.docCompleteness;
+        });
+        
+        App.setState({ 
+          candidates: res.data, 
+          filteredCandidates: res.data,
+          docCompleteness: compMap 
+        });
         Views._populateCandidateFilterDropdowns(res.data);
 
         // Fetch upcoming events in the background to populate priority dots
@@ -1836,8 +1842,6 @@
 
         // Render immediately (completeness cells will show "Loading…" state)
         Views._renderCandidatesTable(res.data);
-        // Fire off batch completeness fetch in background
-        Views._loadAllCompleteness(res.data);
       } catch (err) {
         document.getElementById('candidates-table').innerHTML =
           `<div class="table-empty"><div class="table-empty__icon">⚠️</div>Failed to load: ${escHtml(err.message)}</div>`;
@@ -1847,70 +1851,6 @@
 
     // ── Batch-fetch document completeness for all candidates in ONE server round-trip ──
     // Uses api_getAllDocuments() instead of one api_getDocumentsByCandidate per candidate.
-    // This eliminates the N+1 GAS request pattern that caused long Loading… states.
-    //
-    // A monotonic requestId guard discards any response that arrives after a newer
-    // _loadAllCompleteness() call has started (prevents stale data overwriting fresh state).
-    async _loadAllCompleteness(candidates) {
-      // Increment the request counter — stale responses will see a mismatch and bail out.
-      Views._completenessRequestId = (Views._completenessRequestId || 0) + 1;
-      const myRequestId = Views._completenessRequestId;
-
-      try {
-        const res = await GAS.call('api_getAllDocuments');
-
-        // Discard if a newer load started while this one was in flight.
-        if (myRequestId !== Views._completenessRequestId) return;
-
-        if (!res.success) throw new Error(res.error || 'api_getAllDocuments returned success:false');
-
-        // Index all documents by CandidateID in a single O(n) pass.
-        const byCandidate = {};
-        (res.data || []).forEach(doc => {
-          const id = doc.CandidateID;
-          if (!byCandidate[id]) byCandidate[id] = [];
-          byCandidate[id].push(doc);
-        });
-
-        // Compute completeness for every candidate from the local index.
-        // computeCompleteness() returns status:'ok' — no API call per candidate.
-        const completeness = {};
-        candidates.forEach(c => {
-          completeness[c.CandidateID] = computeCompleteness(byCandidate[c.CandidateID] || []);
-        });
-
-        App.setState({ docCompleteness: completeness });
-
-        // Re-render via _filterCandidates so the filter pipeline always reads
-        // App.state.candidates as its source — never filteredCandidates.
-        const tableEl = document.getElementById('candidates-table');
-        if (tableEl) Views._filterCandidates();
-
-      } catch (err) {
-        // Discard stale error responses too.
-        if (myRequestId !== Views._completenessRequestId) return;
-
-        console.error('Completeness batch load error:', err);
-
-        // Mark every candidate as UNAVAILABLE — not 0%.
-        // pct:null distinguishes "data unavailable" from "genuinely 0 documents".
-        // The rendering layer checks status:'unavailable' to show "—" instead of 0%.
-        const unavailableMap = {};
-        candidates.forEach(c => {
-          unavailableMap[c.CandidateID] = {
-            status: 'unavailable',
-            pct: null,
-            missingDocs: [],
-            presentDocs: []
-          };
-        });
-        App.setState({ docCompleteness: unavailableMap });
-
-        // Re-render so cells update from "Loading…" to "—".
-        const tableEl = document.getElementById('candidates-table');
-        if (tableEl) Views._filterCandidates();
-      }
-    },
 
     // ── Unified Multi-Condition Filtering ──
     _applyCandidateFilters() {
@@ -4470,6 +4410,31 @@
     },
 
     _openPassportExpiryModal(candidateId, currentExpiry) {
+      let defaultY = '', defaultM = '', defaultD = '';
+      if (currentExpiry && /^\d{4}-\d{2}-\d{2}$/.test(currentExpiry)) {
+        const parts = currentExpiry.split('-');
+        defaultY = parts[0];
+        defaultM = parts[1];
+        defaultD = parts[2];
+      }
+
+      const currentYear = new Date().getFullYear();
+      const yearOptions = Array.from({ length: 13 }, (_, i) => {
+        const y = currentYear + i;
+        const shortY = String(y).slice(-2);
+        return `<option value="${y}" ${String(y) === defaultY ? 'selected' : ''}>'${shortY}</option>`;
+      }).join('');
+
+      const monthOptions = Array.from({ length: 12 }, (_, i) => {
+        const m = String(i + 1).padStart(2, '0');
+        return `<option value="${m}" ${m === defaultM ? 'selected' : ''}>${m}</option>`;
+      }).join('');
+
+      const dayOptions = Array.from({ length: 31 }, (_, i) => {
+        const d = String(i + 1).padStart(2, '0');
+        return `<option value="${d}" ${d === defaultD ? 'selected' : ''}>${d}</option>`;
+      }).join('');
+
       Modal.open(`
       <div class="modal__header">
         <h2 class="modal__title">📅 Set Passport Expiry Date</h2>
@@ -4477,40 +4442,75 @@
       </div>
       <div class="modal__body">
         <div class="form-group">
-          <label class="form-label" for="passport-expiry-date">Expiry Date <span class="required">*</span></label>
-          <input type="date" class="form-control" id="passport-expiry-date" value="${currentExpiry || ''}">
+          <label class="form-label">Expiry Date (DD / MM / YY) <span class="required">*</span></label>
+          <div class="passport-date-picker-group">
+            <select class="form-select passport-date-select" id="select-expiry-day">
+              <option value="">DD</option>
+              ${dayOptions}
+            </select>
+            <select class="form-select passport-date-select" id="select-expiry-month">
+              <option value="">MM</option>
+              ${monthOptions}
+            </select>
+            <select class="form-select passport-date-select" id="select-expiry-year">
+              <option value="">YY</option>
+              ${yearOptions}
+            </select>
+          </div>
         </div>
       </div>
       <div class="modal__footer">
         <button class="btn btn--outline" onclick="Modal.close()">Cancel</button>
-        <button class="btn btn--primary" id="save-passport-btn" onclick="Views._savePassportExpiry('${candidateId}')">Save</button>
+        <button class="btn btn--primary" id="save-passport-btn" onclick="Views._savePassportExpiry('${candidateId}')">Save Expiry Date</button>
       </div>`);
     },
     
     async _savePassportExpiry(candidateId) {
-      const expiry = document.getElementById('passport-expiry-date').value;
-      if (!expiry) { Toast.warning('Please select an expiry date.'); return; }
+      const day = document.getElementById('select-expiry-day')?.value;
+      const month = document.getElementById('select-expiry-month')?.value;
+      const year = document.getElementById('select-expiry-year')?.value;
+
+      if (!day || !month || !year) {
+        Toast.warning('Please select a complete Day, Month, and Year.');
+        return;
+      }
+
+      const yNum = parseInt(year, 10);
+      const mNum = parseInt(month, 10);
+      const dNum = parseInt(day, 10);
+
+      // Validate Days per Month
+      const daysInMonth = new Date(yNum, mNum, 0).getDate();
+      if (dNum > daysInMonth) {
+        Toast.warning(`Invalid date: Selected month only has ${daysInMonth} days.`);
+        return;
+      }
+
+      const expiry = `${year}-${month}-${day}`;
       const btn = document.getElementById('save-passport-btn');
       btn.disabled = true;
       btn.innerHTML = '<span class="spinner"></span> Saving...';
+
       try {
         const res = await GAS.call('api_updatePassportExpiryDate', candidateId, expiry);
         if (!res.success) throw new Error(res.error);
+
         Toast.success('Passport expiry updated.');
         Modal.close();
+
         if (App.state.documentsCenter && App.state.documentsCenter.loaded) {
           const cand = App.state.documentsCenter.candidates.find(c => c.candidateId === candidateId);
           if (cand && cand.docDetails && cand.docDetails['Passport']) {
-             cand.docDetails['Passport'].expiryDate = expiry;
-             Views._dcRender();
+            cand.docDetails['Passport'].expiryDate = expiry;
+            Views._dcRender();
           } else {
-             Views._dcLoad();
+            Views._dcLoad();
           }
         }
       } catch (err) {
         Toast.error(err.message);
         btn.disabled = false;
-        btn.innerHTML = 'Save';
+        btn.innerHTML = 'Save Expiry Date';
       }
     },
 

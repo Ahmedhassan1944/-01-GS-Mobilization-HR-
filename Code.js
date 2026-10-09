@@ -144,22 +144,10 @@ function api_getDashboardData() {
       if (status === 'Rejected')                       rejected++;
     });
     // ── Document-based counters ────────────────────────────────────
-    // Build a Set of {CandidateID}_{DocType} for approved/pending docs
     const REQUIRED_DOCS = [
       'Passport', 'Photo', 'Academic Certificate',
       'Medical Examination', 'Medical Analysis', 'Visa', 'CV'
     ];
-    // Map: candidateId → Set of docTypes they HAVE (not Rejected)
-    const candDocMap = {};
-    candidates.forEach(c => { candDocMap[c.CandidateID] = new Set(); });
-    allDocs.forEach(doc => {
-      if (isDocumentAvailable_(doc)) {
-        const key = (doc.CandidateID || '').trim();
-        if (candDocMap[key]) {
-          candDocMap[key].add((doc.DocType || '').trim());
-        }
-      }
-    });
     // Count has/missing per docType across all candidates
     const hasCount     = {};
     const missingCount = {};
@@ -168,10 +156,12 @@ function api_getDashboardData() {
       const status = (cand.CurrentStatus || '').trim();
       if (EXCLUDED_KPI_STATUSES.has(status)) return;
       
-      const myDocs = candDocMap[cand.CandidateID] || new Set();
+      const comp = cand.docCompleteness || { presentDocs: [], missingDocs: [] };
+      const present = new Set(comp.presentDocs);
+      
       REQUIRED_DOCS.forEach(dt => {
-        if (myDocs.has(dt)) hasCount[dt]++;
-        else                missingCount[dt]++;
+        if (present.has(dt)) hasCount[dt]++;
+        else                 missingCount[dt]++;
       });
     });
     
