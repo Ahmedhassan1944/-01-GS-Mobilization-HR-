@@ -438,7 +438,7 @@
         this.navigate('dashboard', params);
         return;
       }
-      App.setState({ currentView: view, ...params });
+      App.setState({ previousView: App.state.currentView, currentView: view, ...params });
       renderSidebar();
       renderView();
       document.getElementById('app-view')?.focus();
@@ -1607,8 +1607,11 @@
 
     // ── CANDIDATES LIST ────────────────────────
     candidates(container) {
-      // Reset per-view filter state so filters don't persist between navigations
-      App.setState({ sortCol: '', sortDir: 'asc', statusFilters: [], docFilters: [] });
+      // Reset per-view filter state so filters don't persist between navigations,
+      // unless returning from candidate detail view.
+      if (App.state.previousView !== 'candidate-detail') {
+        App.setState({ sortCol: '', sortDir: 'asc', statusFilters: [], docFilters: [] });
+      }
 
       container.innerHTML = `
       <div class="page-header">
@@ -2680,8 +2683,8 @@
       container.innerHTML = `
       <div class="page-header">
         <div>
-          <button class="btn btn--ghost btn--sm" onclick="Router.navigate('candidates')" style="margin-bottom:var(--sp-2);padding-left:0">
-            ← Back to Candidates
+          <button class="btn btn--ghost btn--sm" onclick="Router.navigate(App.state.previousView === 'dashboard' ? 'dashboard' : 'candidates')" style="margin-bottom:var(--sp-2);padding-left:0">
+            ← Back
           </button>
           <h1 class="page-header__title">${escHtml(c.FullName)}</h1>
           <p class="page-header__sub">${escHtml(c.Position)} · ${escHtml(c.Department)} · ${statusBadge(c.CurrentStatus)}</p>
@@ -2807,29 +2810,32 @@
         const el = document.getElementById('docs-section');
 
         // ── Document Completeness Panel ──────────────────────────────────
+        // 1. Sync JavaScript memory cache instantly
+        const newComp = computeCompleteness(docs);
+        App.state.docCompleteness[candidateId] = newComp;
+
+        // 2. Reactive view sync for table rows if currently in a table view
+        if (App.state.currentView === 'candidates') {
+          Views._filterCandidates();
+        } else if (App.state.currentView === 'dashboard') {
+          Views._applyDashboardAllFilters();
+        }
+
         const completenessEl = document.getElementById('doc-completeness');
         if (completenessEl) {
-          // Map uploaded doc types (normalise for comparison)
-          const uploadedTypes = new Set(
-            docs
-              .filter(d => d.ApprovalStatus !== 'Rejected')
-              .map(d => (d.DocType || '').trim())
-          );
-
-          // Determine which required docs are present
-          const presentDocs = REQUIRED_DOCS.filter(req => uploadedTypes.has(req));
-          const missingDocs = REQUIRED_DOCS.filter(req => !uploadedTypes.has(req));
+          const presentDocs = newComp.presentDocs;
+          const missingDocs = newComp.missingDocs;
           const completedCount = presentDocs.length;
           const totalCount = REQUIRED_DOCS.length;
-          const pct = Math.round((completedCount / totalCount) * 100);
+          const pct = newComp.pct;
 
           // Derive suggested auto-status
           let suggestedStatus = '';
-          if (!uploadedTypes.has('Passport')) suggestedStatus = 'Pending Passport';
-          else if (!uploadedTypes.has('Photo')) suggestedStatus = 'Pending Photo';
-          else if (!uploadedTypes.has('Academic Certificate')) suggestedStatus = 'Pending Academic Certificate';
-          else if (!uploadedTypes.has('Medical Examination')) suggestedStatus = 'Booked a medical examination';
-          else if (!uploadedTypes.has('Medical Analysis')) suggestedStatus = 'Booked a medical examination';
+          if (missingDocs.includes('Passport')) suggestedStatus = 'Pending Passport';
+          else if (missingDocs.includes('Photo')) suggestedStatus = 'Pending Photo';
+          else if (missingDocs.includes('Academic Certificate')) suggestedStatus = 'Pending Academic Certificate';
+          else if (missingDocs.includes('Medical Examination')) suggestedStatus = 'Booked a medical examination';
+          else if (missingDocs.includes('Medical Analysis')) suggestedStatus = 'Booked a medical examination';
           else suggestedStatus = 'Documents Complete';
 
           // Determine bar colour
