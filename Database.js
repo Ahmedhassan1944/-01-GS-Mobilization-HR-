@@ -501,24 +501,59 @@ function api_updateCandidateStatus(candidateId, newStatus) {
 // ─────────────────────────────────────────────
 
 /**
- * Gets all documents for a specific candidate.
- * @param {string} candidateId
+ * Global API endpoint called from Script.html
+ * Fetches all document records linked to a specific candidate cleanly and safely.
  */
 function api_getDocumentsByCandidate(candidateId) {
   try {
-    const sheet = getSheet_(SHEET_DOCUMENTS);
-    const [headers, ...rows] = sheet.getDataRange().getValues();
-    const documents = rows
-      .filter(row => row[headers.indexOf('CandidateID')] === candidateId)
-      .map(row => {
-        const obj = {};
-        headers.forEach((h, i) => obj[h] = row[i]);
-        return obj;
-      });
-    return { success: true, data: documents };
-  } catch (e) {
-    Logger.log(e);
-    return { success: false, error: e.message };
+    if (!candidateId && candidateId !== 0) {
+      return { success: true, data: [] };
+    }
+
+    const targetId = String(candidateId).trim();
+    const ss = getSpreadsheet_(); // Cached spreadsheet accessor
+    const sheet = ss.getSheetByName('tbl_Documents') || ss.getSheetByName('Documents');
+
+    if (!sheet) {
+      Logger.log('Documents table not found');
+      return { success: true, data: [] };
+    }
+
+    const data = sheet.getDataRange().getValues();
+    if (data.length <= 1) {
+      return { success: true, data: [] };
+    }
+
+    const headers = data[0].map(h => String(h).trim());
+    const idColIdx = headers.indexOf('CandidateID') !== -1 
+      ? headers.indexOf('CandidateID') 
+      : headers.indexOf('candidateId');
+
+    if (idColIdx === -1) {
+      Logger.log('Candidate ID column not found in tbl_Documents');
+      return { success: true, data: [] };
+    }
+
+    const candidateDocs = [];
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      if (String(row[idColIdx] || '').trim() === targetId) {
+        const docObj = {};
+        headers.forEach((header, colIndex) => {
+          let cellValue = row[colIndex];
+          if (cellValue instanceof Date) {
+            cellValue = Utilities.formatDate(cellValue, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+          }
+          docObj[header] = cellValue !== undefined ? cellValue : '';
+        });
+        candidateDocs.push(docObj);
+      }
+    }
+
+    return { success: true, data: candidateDocs };
+  } catch (err) {
+    Logger.log('Error in api_getDocumentsByCandidate: ' + err.toString());
+    return { success: false, error: err.toString(), data: [] };
   }
 }
 

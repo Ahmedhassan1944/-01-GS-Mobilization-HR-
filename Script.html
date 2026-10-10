@@ -2847,15 +2847,19 @@
       const REQUIRED_DOCS = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
 
       try {
-        const res = await GAS.call('api_getDocumentsByCandidate', candidateId);
-        if (!res.success) throw new Error(res.error);
-        const docs = res.data;
+        const cleanId = String(candidateId || '').trim();
+        if (!cleanId) throw new Error('Invalid Candidate ID.');
+
+        const res = await GAS.call('api_getDocumentsByCandidate', cleanId);
+        if (!res || !res.success) throw new Error(res?.error || 'Failed to retrieve documents.');
+        
+        const docs = res.data || [];
         const el = document.getElementById('docs-section');
 
         // ── Document Completeness Panel ──────────────────────────────────
         // 1. Sync JavaScript memory cache instantly
         const newComp = computeCompleteness(docs);
-        App.state.docCompleteness[candidateId] = newComp;
+        App.state.docCompleteness[cleanId] = newComp;
 
         // 2. Reactive view sync for table rows if currently in a table view
         if (App.state.currentView === 'candidates') {
