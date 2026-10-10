@@ -4505,67 +4505,45 @@
     _renderDocBadge(cand, docType) {
       const summary = cand.docSummary || {};
       const details = cand.docDetails || {};
-      
       const status = summary[docType] || 'Missing';
+
+      // 1. Missing Document
       if (status === 'Missing') {
-        return `<div class="doc-cell-badge doc-cell-badge--missing" title="Document missing" onclick="Views._openUploadModal('${cand.candidateId}', '${cand.driveFolderId || ''}', '${docType}')">Missing</div>`;
+        return `<div class="doc-cell-badge doc-cell-badge--missing" title="Document missing" 
+                  onclick="Views._openUploadModal('${cand.candidateId}', '${cand.driveFolderId || ''}', '${docType}')">Missing</div>`;
       }
-      
+
       const doc = details[docType] || {};
-      const now = new Date();
-      now.setHours(0,0,0,0);
-      
-      let refDateStr = null;
-      let maxDays = 0;
-      let diffDays = 0;
-      const isExpirableDoc = docType === 'Passport' || docType === 'Medical Examination' || docType === 'Medical Analysis';
-      
-      if (isExpirableDoc && doc.expiryDate) {
-        // Primary Rule: ExpiryDate exists (always applies to Passport if set, and optionally Medical docs)
-        refDateStr = doc.expiryDate;
-        const refDate = new Date(refDateStr);
-        const diffTime = refDate.getTime() - now.getTime();
-        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      } else if (docType === 'Passport') {
-        // Passport MUST have expiry date
-        return `<div class="doc-cell-badge doc-cell-badge--needs-action" title="Needs Expiry Date" onclick="Views._openDocExpiryModal('${cand.candidateId}', '${docType}', '')">Set Date ⚠️</div>`;
-      } else {
-        // Fallback Rule for Medical docs or Visa
-        refDateStr = doc.issueDate || doc.uploadDate;
-        if (docType === 'Medical Examination') maxDays = 60;
-        else if (docType === 'Medical Analysis') maxDays = 90;
-        else if (docType === 'Visa') maxDays = 90;
-        
-        if (!refDateStr) {
-          return `<div class="doc-cell-badge doc-cell-badge--valid" title="Valid">Valid</div>`;
-        }
-        
-        const refDate = new Date(refDateStr);
-        const expDate = new Date(refDate);
-        expDate.setDate(expDate.getDate() + maxDays);
-        const diffTime = expDate.getTime() - now.getTime();
-        diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      const assignedDate = doc.expiryDate || doc.issueDate || doc.documentDate;
+
+      // 2. Uploaded but no date set manually -> Render "Set Date ⚠️"
+      if (!assignedDate) {
+        return `<div class="doc-cell-badge doc-cell-badge--needs-action" title="Set Expiry / Validity Date" 
+                  onclick="Views._openDocExpiryModal('${cand.candidateId}', '${docType}', '')">Set Date ⚠️</div>`;
       }
-      
-      let badgeClass = '';
-      let badgeText = '';
-      
+
+      // 3. Manually assigned date -> Compute remaining days relative to today
+      const now = new Date();
+      now.setHours(0, 0, 0, 0);
+      const refDate = new Date(assignedDate);
+      const diffTime = refDate.getTime() - now.getTime();
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+      let badgeClass = 'doc-cell-badge--valid';
+      let badgeText = `${diffDays}d`;
+
       if (diffDays <= 0) {
         badgeClass = 'doc-cell-badge--expired';
         badgeText = `Expired (${diffDays}d)`;
       } else if (diffDays <= 30) {
         badgeClass = 'doc-cell-badge--expiring';
         badgeText = `${diffDays}d`;
-      } else {
-        badgeClass = 'doc-cell-badge--valid';
-        badgeText = `${diffDays}d`;
       }
-      
-      let tooltip = `Issue: ${doc.issueDate || 'N/A'}&#10;Upload: ${doc.uploadDate ? new Date(doc.uploadDate).toLocaleDateString() : 'N/A'}&#10;Expiry: ${doc.expiryDate || 'N/A'}`;
-      if (isExpirableDoc) {
-        return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}" onclick="Views._openDocExpiryModal('${cand.candidateId}', '${docType}', '${doc.expiryDate || ''}')">${badgeText}</div>`;
-      }
-      return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}">${badgeText}</div>`;
+
+      const tooltip = `Assigned Date: ${assignedDate}&#10;Click to update expiry date`;
+
+      return `<div class="doc-cell-badge ${badgeClass}" title="${tooltip}" 
+                onclick="Views._openDocExpiryModal('${cand.candidateId}', '${docType}', '${assignedDate}')">${badgeText}</div>`;
     },
 
     _dcRender() {
