@@ -90,6 +90,7 @@ function api_getDocumentsCenterData(filtersJson) {
       
       if (fSearch) {
         if (name.toLowerCase().indexOf(fSearch) === -1 && 
+            pos.toLowerCase().indexOf(fSearch) === -1 &&
             hrCode.toLowerCase().indexOf(fSearch) === -1 && 
             id.toLowerCase().indexOf(fSearch) === -1) {
           continue;

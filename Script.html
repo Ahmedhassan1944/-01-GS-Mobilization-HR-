@@ -220,8 +220,9 @@
         const search = (filters.search || '').toLowerCase();
         if (search) {
           list = list.filter(c =>
-            c.fullName.toLowerCase().includes(search) ||
-            c.candidateId.toLowerCase().includes(search)
+            String(c.fullName || '').toLowerCase().includes(search) ||
+            String(c.position || '').toLowerCase().includes(search) ||
+            String(c.candidateId || '').toLowerCase().includes(search)
           );
         }
         if (filters.status && filters.status.length) {
@@ -616,7 +617,7 @@
       <div class="candidate-filter-bar">
         <div class="search-input" style="flex: 1; min-width: 200px;">
           <span class="search-input__icon" aria-hidden="true">🔍</span>
-          <input type="search" id="dash-tb-search" placeholder="Name, HR Code, ID..."
+          <input type="search" id="dash-tb-search" placeholder="Name, Position, HR Code, ID..."
                  aria-label="Search candidates" oninput="Views._applyDashboardAllFilters()" autocomplete="off">
         </div>
         <select id="dash-tb-pos" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
@@ -1265,17 +1266,18 @@
       let data = allCands.filter(c => {
         // KPI card filter (inline — no stale base)
         if (!cardFilterFn(c)) return false;
-        // Text search
+        // Safe multi-field search check
         const matchQ = !query ||
-          c.FullName?.toLowerCase().includes(query) ||
-          c.HR_Code?.toLowerCase().includes(query) ||
-          c.CandidateID?.toLowerCase().includes(query) ||
-          c.Email?.toLowerCase().includes(query);
+          String(c.FullName || '').toLowerCase().includes(query) ||
+          String(c.Position || '').toLowerCase().includes(query) ||
+          String(c.HR_Code || '').toLowerCase().includes(query) ||
+          String(c.CandidateID || '').toLowerCase().includes(query) ||
+          String(c.Email || '').toLowerCase().includes(query);
 
         const matchPos = !posFilter || c.Position === posFilter;
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter;
-        const matchBatch = !batchFilter || c.Batch_Number === batchFilter;
+        const matchBatch = !batchFilter || (Views._getBatchValue ? Views._getBatchValue(c) === batchFilter : c.Batch_Number === batchFilter) || c.Batch_Number === batchFilter;
         if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;
         // Include status
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
@@ -1455,7 +1457,7 @@
       if (document.getElementById('dash-tb-status')) document.getElementById('dash-tb-status').selectedIndex = 0;
       if (document.getElementById('dash-tb-nat')) document.getElementById('dash-tb-nat').selectedIndex = 0;
       if (document.getElementById('dash-tb-batch')) document.getElementById('dash-tb-batch').selectedIndex = 0;
-      this._applyDashboardAllFilters();
+      Views._applyDashboardAllFilters();
     },
 
     _clearDashboardAllFilters() {
@@ -1498,8 +1500,9 @@
 
     _renderDashboardTable(candidates) {
       const el = document.getElementById('dashboard-table');
+      if (!el) return;
       const countEl = document.getElementById('dashboard-cands-count');
-      if (countEl) countEl.textContent = `${candidates.length} Candidate${candidates.length !== 1 ? 's' : ''}`;
+      if (countEl) countEl.textContent = `${candidates.length} Candidate${candidates.length !== 1 ? 's' : ''} found`;
 
       if (!candidates.length) {
         el.innerHTML = '<div class="table-empty"><div class="table-empty__icon">👥</div>No candidates match the selected filter.</div>';
@@ -1655,7 +1658,7 @@
       <div class="candidate-filter-bar">
         <div class="search-input" style="flex: 1; min-width: 200px;">
           <span class="search-input__icon" aria-hidden="true">🔍</span>
-          <input type="search" id="cand-tb-search" placeholder="Name, HR Code, ID..."
+          <input type="search" id="cand-tb-search" placeholder="Name, Position, HR Code, ID..."
                  aria-label="Search candidates" oninput="Views._applyCandidateFilters()" autocomplete="off">
         </div>
         <select id="cand-tb-pos" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
@@ -1854,7 +1857,7 @@
 
     // ── Unified Multi-Condition Filtering ──
     _applyCandidateFilters() {
-      this._filterCandidates();
+      Views._filterCandidates();
     },
 
     _populateCandidateFilterDropdowns(candidates) {
@@ -1907,7 +1910,7 @@
       if (document.getElementById('cand-tb-status')) document.getElementById('cand-tb-status').selectedIndex = 0;
       if (document.getElementById('cand-tb-nat')) document.getElementById('cand-tb-nat').selectedIndex = 0;
       if (document.getElementById('cand-tb-batch')) document.getElementById('cand-tb-batch').selectedIndex = 0;
-      this._filterCandidates();
+      Views._filterCandidates();
     },
 
     // ── Combined filter + sort ──
@@ -1927,18 +1930,19 @@
       const { statusFilters, docFilters, docCompleteness, sortCol, sortDir, excludeStatusFilters } = App.state;
 
       // Source of truth: always the complete, unfiltered candidate list.
-      let data = App.state.candidates.filter(c => {
-        // Text search (empty query passes all)
+      let data = (App.state.candidates || []).filter(c => {
+        // Safe multi-field search check
         const matchQ = !query ||
-          c.FullName?.toLowerCase().includes(query) ||
-          c.HR_Code?.toLowerCase().includes(query) ||
-          c.CandidateID?.toLowerCase().includes(query) ||
-          c.Email?.toLowerCase().includes(query);
+          String(c.FullName || '').toLowerCase().includes(query) ||
+          String(c.Position || '').toLowerCase().includes(query) ||
+          String(c.HR_Code || '').toLowerCase().includes(query) ||
+          String(c.CandidateID || '').toLowerCase().includes(query) ||
+          String(c.Email || '').toLowerCase().includes(query);
 
         const matchPos = !posFilter || c.Position === posFilter;
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter;
-        const matchBatch = !batchFilter || c.Batch_Number === batchFilter;
+        const matchBatch = !batchFilter || (Views._getBatchValue ? Views._getBatchValue(c) === batchFilter : c.Batch_Number === batchFilter) || c.Batch_Number === batchFilter;
         // Multi-select status INCLUDE (empty array = all pass)
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Multi-select status EXCLUDE (empty array = nothing excluded)
@@ -2302,6 +2306,7 @@
       if (rangeVal) rangeVal.textContent = '0%';
       // Explicitly clear the DOM search input so no stale query re-surfaces.
       // Search is intentionally NOT persisted to localStorage — it is ephemeral.
+      if (document.getElementById('cand-tb-search')) document.getElementById('cand-tb-search').value = '';
       const searchInput = document.getElementById('search-input');
       if (searchInput) searchInput.value = '';
       try { localStorage.removeItem('hr_candidate_filters'); } catch (_) { }
@@ -2322,10 +2327,13 @@
       const count = document.getElementById('cands-count');
       if (count) count.textContent = `${data.length} Candidate${data.length !== 1 ? 's' : ''} found`;
       const footer = document.getElementById('table-footer');
-      if (footer) footer.textContent = `Showing ${data.length} of ${App.state.candidates.length} candidates`;
-      document.getElementById('candidates-table').innerHTML = data.length
-        ? Views._candidateTableHtml(data)
-        : '<div class="table-empty"><div class="table-empty__icon">🔍</div>No candidates match your filters.</div>';
+      if (footer) footer.textContent = `Showing ${data.length} of ${(App.state.candidates || []).length} candidates`;
+      const table = document.getElementById('candidates-table');
+      if (table) {
+        table.innerHTML = data.length
+          ? Views._candidateTableHtml(data)
+          : '<div class="table-empty"><div class="table-empty__icon">🔍</div>No candidates match your filters.</div>';
+      }
     },
 
     // ── Sortable column header HTML helper ──
@@ -4145,7 +4153,7 @@
         <div style="display:flex;gap:var(--sp-3);flex-wrap:wrap;align-items:flex-end;padding:var(--sp-3);">
           <div style="flex:1;min-width:200px;">
             <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary);display:block;margin-bottom:4px;">🔍 Search</label>
-            <input type="search" class="form-control form-control--sm" placeholder="Name, HR Code, ID…"
+            <input type="search" class="form-control form-control--sm" placeholder="Name, Position, HR Code, ID…"
               oninput="Views._dcOnSearchChange(this.value)" id="dc-search" style="width:100%">
           </div>
           <div style="flex:1;min-width:160px;">
@@ -4320,7 +4328,7 @@
         if (dept && c.department !== dept) return false;
         if (nat && c.nationality !== nat) return false;
         if (batch && c.batchNumber !== batch) return false;
-        if (search && !`${c.fullName} ${c.hrCode} ${c.candidateId}`.toLowerCase().includes(search)) return false;
+        if (search && !`${c.fullName} ${c.position || ''} ${c.hrCode} ${c.candidateId}`.toLowerCase().includes(search)) return false;
         return true;
       });
 
