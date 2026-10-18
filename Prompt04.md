@@ -32,4 +32,4 @@ Because candidates with these 4 statuses were filtered out beforehand:
 ### Constraints
 - The 📊 Pipeline Overview total (`Active Cases`) and document grids (HAS / MISSING) must continue to exclude `Closed`, `Rejected`, `Unfit-Injury`, and `Unfit-PCR`.
 - Dedicated cards for `Rejected`, `Unfit-Injury`, and `Unfit-PCR` must show their actual candidate totals.
-- Preserve all existing batch filters and document completeness logic.
+- Preserve all existing batch filters and document completeness logic....
