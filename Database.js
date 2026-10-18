@@ -471,6 +471,7 @@ function api_updateCandidateStatus(candidateId, newStatus) {
     'Unfit-Injury',
     'Rejected'
   ]);
+  (getOrCreateSettingsFromDb_().statuses || []).forEach(s => ALLOWED_STATUSES.add(s));
 
   if (!ALLOWED_STATUSES.has(newStatus)) {
     return { success: false, error: 'Invalid status value: ' + newStatus };
@@ -854,6 +855,8 @@ const DEFAULT_SYSTEM_SETTINGS = {
   ]
 };
 
+const SETTINGS_HEADERS = ['SettingID', 'Category', 'ItemValue', 'ItemOrder', 'ItemMeta', 'CreatedAt', 'UpdatedAt'];
+
 /**
  * Internal: Ensures tbl_Settings exists and seeds defaults if missing.
  * Reads and formats dynamic system settings grouped by category.
@@ -865,7 +868,7 @@ function getOrCreateSettingsFromDb_() {
 
   if (!sheet) {
     sheet = ss.insertSheet(SHEET_SETTINGS);
-    sheet.appendRow(['SettingID', 'Category', 'ItemValue', 'ItemOrder', 'ItemMeta', 'CreatedAt', 'UpdatedAt']);
+    sheet.appendRow(SETTINGS_HEADERS);
 
     let idCounter = 1;
     const rows = [];
@@ -890,7 +893,9 @@ function getOrCreateSettingsFromDb_() {
   }
 
   const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) {
+  if (data.length <= 1 || data[0].length !== 7 || data[0][0] !== 'SettingID' || data[0][1] !== 'Category') {
+    sheet.clearContents();
+    sheet.getRange(1, 1, 1, 7).setValues([SETTINGS_HEADERS]);
     let idCounter = 1;
     const rows = [];
     Object.keys(DEFAULT_SYSTEM_SETTINGS).forEach(category => {
@@ -979,12 +984,9 @@ function api_updateSystemSettings(categoryKey, itemsArray) {
     if (!categoryKey) throw new Error('categoryKey is required');
     if (!Array.isArray(itemsArray)) throw new Error('itemsArray must be an array');
 
+    getOrCreateSettingsFromDb_();
     const ss = getSpreadsheet_();
-    let sheet = ss.getSheetByName(SHEET_SETTINGS);
-    if (!sheet) {
-      getOrCreateSettingsFromDb_();
-      sheet = ss.getSheetByName(SHEET_SETTINGS);
-    }
+    const sheet = ss.getSheetByName(SHEET_SETTINGS);
 
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
@@ -1000,15 +1002,24 @@ function api_updateSystemSettings(categoryKey, itemsArray) {
 
     const retainedRows = [];
     for (let i = 1; i < data.length; i++) {
-      const rowCat = String(data[i][catCol] || '').trim();
+      const row = data[i];
+      const rowCat = String(row[catCol !== -1 ? catCol : 1] || '').trim();
       if (rowCat !== categoryKey) {
-        retainedRows.push(data[i]);
+        retainedRows.push([
+          row[0] || '',
+          row[1] || '',
+          row[2] || '',
+          row[3] || '',
+          row[4] || '',
+          row[5] || now,
+          row[6] || now
+        ]);
       }
     }
 
     let maxIdNum = 0;
     for (let i = 1; i < data.length; i++) {
-      const idStr = String(data[i][idCol] || '');
+      const idStr = String(data[i][idCol !== -1 ? idCol : 0] || '');
       const m = idStr.match(/\d+/);
       if (m) {
         const num = parseInt(m[0], 10);
@@ -1031,10 +1042,10 @@ function api_updateSystemSettings(categoryKey, itemsArray) {
       ];
     });
 
-    const allRows = [headers, ...retainedRows, ...newCategoryRows];
+    const allRows = [SETTINGS_HEADERS, ...retainedRows, ...newCategoryRows];
 
     sheet.clearContents();
-    sheet.getRange(1, 1, allRows.length, headers.length).setValues(allRows);
+    sheet.getRange(1, 1, allRows.length, 7).setValues(allRows);
 
     // [STRICT CACHE INVALIDATION] Invalidate both cache keys prior to returning
     CacheService.getScriptCache().remove('dashboard_data');

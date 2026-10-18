@@ -388,7 +388,8 @@
     },
     success(msg) { this.show(msg, 'success'); },
     error(msg) { this.show(msg, 'error'); },
-    warning(msg) { this.show(msg, 'warning'); }
+    warning(msg) { this.show(msg, 'warning'); },
+    info(msg) { this.show(msg, 'default'); }
   };
 
   // ─────────────────────────────────────────────
@@ -461,14 +462,7 @@
       'Not Available': 'not-available',
       'Creating WhatsApp Group': 'whatsapp',
       'Unfit-PCR': 'unfit-pcr',
-      'Unfit-Injury': 'unfit-injury',
-      // ── New Candidate Statuses ──
-      'Talent Acquisition Issues': 'ta-issues',
-      'Renewal Passport': 'renewal-passport',
-      'Not Available': 'not-available',
-      'Creating WhatsApp Group': 'whatsapp',
-      'Unfit-PCR': 'unfit-pcr',
-      'Unfit-Injury': 'unfit-injury',
+      'Unfit-Injury': 'unfit-injury'
     };
     const cls = map[status] || 'pending';
     return `<span class="badge badge--${cls}">${status || 'Unknown'}</span>`;
