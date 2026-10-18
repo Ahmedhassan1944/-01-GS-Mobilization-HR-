@@ -141,7 +141,7 @@ function api_getDashboardData() {
     });
 
     candidates.forEach(cand => {
-      const status = (cand.CurrentStatus || '').trim();
+      const status = String(cand.CurrentStatus || '').trim();
       if (!EXCLUDED_KPI_STATUSES.has(status)) activeCount++;
       if (MISSING_DOC_STATUSES.has(status))           missingDocs++;
       if (status === 'Visa Pending')                   visaPending++;
@@ -182,7 +182,7 @@ function api_getDashboardData() {
     const missingCount = {};
     REQUIRED_DOCS.forEach(dt => { hasCount[dt] = 0; missingCount[dt] = 0; });
     candidates.forEach(cand => {
-      const status = (cand.CurrentStatus || '').trim();
+      const status = String(cand.CurrentStatus || '').trim();
       if (EXCLUDED_KPI_STATUSES.has(status)) return;
       
       const comp = cand.docCompleteness || { presentDocs: [], missingDocs: [] };
