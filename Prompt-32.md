@@ -22,4 +22,4 @@ Apply ONLY this surgical fix to `Script.html`.
 const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
 const matchNat = !natFilter || c.Nationality === natFilter; // <-- SURGICAL FIX ADDED
 const matchBatch = !batchFilter || (Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(batchFilter));
-if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;
+if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;...
