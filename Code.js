@@ -133,9 +133,12 @@ function api_getDashboardData() {
     const statusCounts = {};
     (settings.statuses || []).forEach(st => { statusCounts[st] = 0; });
 
+    // [SURGICAL FIX] Safe Batch Aggregation
     const batchCounts = {};
-    const allBatches = [...(settings.staffBatches || []), ...(settings.kalhatBatches || [])];
-    allBatches.forEach(b => { batchCounts[b] = 0; });
+    const allBatches = [...(settings.staffBatches || []), ...(settings.kalhatBatches || [])].filter(Boolean);
+    allBatches.forEach(b => {
+      batchCounts[String(b)] = 0;
+    });
 
     candidates.forEach(cand => {
       const status = (cand.CurrentStatus || '').trim();
@@ -158,12 +161,12 @@ function api_getDashboardData() {
       if (statusCounts[status] !== undefined) statusCounts[status]++;
 
       // Dynamic batch matching (supports "Staff Batch N", "Batch N", "Kalhat Batch N")
-      const cBatch = (cand.Batch_Number || cand['Batch Number'] || '').toString().trim().toLowerCase().replace(/[-_]/g, ' ').replace(/^staff\s+/, '');
+      const cBatch = String(cand.Batch_Number || cand['Batch Number'] || '').trim().toLowerCase().replace(/[-_]/g, ' ').replace(/^staff\s+/, '');
       if (cBatch) {
         allBatches.forEach(b => {
-          const normB = b.toString().trim().toLowerCase().replace(/[-_]/g, ' ').replace(/^staff\s+/, '');
+          const normB = String(b).trim().toLowerCase().replace(/[-_]/g, ' ').replace(/^staff\s+/, '');
           if (cBatch === normB) {
-            batchCounts[b] = (batchCounts[b] || 0) + 1;
+            batchCounts[String(b)] = (batchCounts[String(b)] || 0) + 1;
           }
         });
       }
