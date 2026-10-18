@@ -43,6 +43,7 @@ const SHEET_DOCUMENTS = 'tbl_Documents';
 const SHEET_USERS = 'tbl_Users';
 const SHEET_LOGS = 'tbl_SystemLogs';
 const SHEET_EVENTS = 'tbl_Events';
+const SHEET_SETTINGS = 'tbl_Settings';
 
 /**
  * Internal: Returns the opened Spreadsheet, cached for this execution.
@@ -291,6 +292,7 @@ function api_updateCandidateDetails(candidateId, updates) {
     const localPathCol = headers.indexOf('LocalServerPath');
     const hrCodeCol = headers.indexOf('HR_Code');
     const recruitmentTypeCol = headers.indexOf('Recruitment_Type');
+    const batchCol = headers.indexOf('Batch_Number') !== -1 ? headers.indexOf('Batch_Number') : headers.indexOf('BatchNumber');
     const updatedCol = headers.indexOf('UpdatedAt');
 
     const ALLOWED_RECRUITMENT_TYPES = new Set(['Internal', 'External']);
@@ -333,6 +335,9 @@ function api_updateCandidateDetails(candidateId, updates) {
           } else {
             Logger.log('WARNING: Invalid Recruitment_Type value: ' + updates.recruitmentType + '. Allowed: Internal, External.');
           }
+        }
+        if (updates.batchNumber !== undefined && batchCol >= 0) {
+          sheet.getRange(i + 1, batchCol + 1).setValue((updates.batchNumber || '').toString().trim());
         }
         sheet.getRange(i + 1, updatedCol + 1).setValue(new Date().toISOString());
         api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Profile Updated');
@@ -758,6 +763,289 @@ function api_getAuditLog(candidateId) {
     return { success: true, data: logs };
   } catch (e) {
     Logger.log(e);
+    return { success: false, error: e.message };
+  }
+}
+
+// ─────────────────────────────────────────────
+// SYSTEM SETTINGS & DYNAMIC CONFIGURATION ENGINE
+// ─────────────────────────────────────────────
+
+const DEFAULT_SYSTEM_SETTINGS = {
+  staffBatches: [
+    'Staff Batch 1',
+    'Staff Batch 2',
+    'Staff Batch 3',
+    'Staff Batch 4',
+    'Staff Batch 5'
+  ],
+  kalhatBatches: [
+    'Kalhat Batch 1',
+    'Kalhat Batch 2'
+  ],
+  statuses: [
+    'New Candidate',
+    'Pending Passport',
+    'Pending Photo',
+    'Pending Academic Certificate',
+    'Pending Medical',
+    'Booked a medical examination',
+    'Documents Under Preparing',
+    'Documents Complete',
+    'Visa Pending',
+    'Visa Completed',
+    'Mobilized',
+    'Talent Acquisition Issues',
+    'Renewal Passport',
+    'Not Available',
+    'Creating WhatsApp Group',
+    'Unfit-PCR',
+    'Unfit-Injury',
+    'Rejected',
+    'Closed'
+  ],
+  excludedStatuses: [
+    'Closed',
+    'Rejected',
+    'Unfit-Injury',
+    'Unfit-PCR'
+  ],
+  recruitmentTypes: [
+    'Internal',
+    'External'
+  ],
+  documentTypes: [
+    'Passport',
+    'Photo',
+    'Academic Certificate',
+    'Medical Examination',
+    'Medical Analysis',
+    'Visa',
+    'CV'
+  ],
+  departments: [
+    'Projects',
+    'Maintenance',
+    'Finance',
+    'HR',
+    'Operations',
+    'IT',
+    'Safety'
+  ],
+  nationalities: [
+    'Egyptian',
+    'Sudanese',
+    'Jordanian',
+    'Saudi',
+    'Yemeni',
+    'Moroccan',
+    'Other'
+  ],
+  positions: [
+    'Civil Engineer',
+    'Electrical Engineer',
+    'Mechanical Engineer',
+    'Safety Officer',
+    'Surveyor',
+    'Foreman',
+    'HR Specialist',
+    'Accountant',
+    'Admin'
+  ]
+};
+
+/**
+ * Internal: Ensures tbl_Settings exists and seeds defaults if missing.
+ * Reads and formats dynamic system settings grouped by category.
+ */
+function getOrCreateSettingsFromDb_() {
+  const ss = getSpreadsheet_();
+  let sheet = ss.getSheetByName(SHEET_SETTINGS);
+  const now = new Date().toISOString();
+
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_SETTINGS);
+    sheet.appendRow(['SettingID', 'Category', 'ItemValue', 'ItemOrder', 'ItemMeta', 'CreatedAt', 'UpdatedAt']);
+
+    let idCounter = 1;
+    const rows = [];
+    Object.keys(DEFAULT_SYSTEM_SETTINGS).forEach(category => {
+      const items = DEFAULT_SYSTEM_SETTINGS[category];
+      items.forEach((val, idx) => {
+        rows.push([
+          'SET-' + String(idCounter++).padStart(4, '0'),
+          category,
+          String(val),
+          idx + 1,
+          '',
+          now,
+          now
+        ]);
+      });
+    });
+    if (rows.length > 0) {
+      sheet.getRange(2, 1, rows.length, 7).setValues(rows);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SETTINGS));
+  }
+
+  const data = sheet.getDataRange().getValues();
+  if (data.length <= 1) {
+    let idCounter = 1;
+    const rows = [];
+    Object.keys(DEFAULT_SYSTEM_SETTINGS).forEach(category => {
+      const items = DEFAULT_SYSTEM_SETTINGS[category];
+      items.forEach((val, idx) => {
+        rows.push([
+          'SET-' + String(idCounter++).padStart(4, '0'),
+          category,
+          String(val),
+          idx + 1,
+          '',
+          now,
+          now
+        ]);
+      });
+    });
+    if (rows.length > 0) {
+      sheet.getRange(2, 1, rows.length, 7).setValues(rows);
+    }
+    return JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SETTINGS));
+  }
+
+  const headers = data[0];
+  const catCol = headers.indexOf('Category');
+  const valCol = headers.indexOf('ItemValue');
+  const orderCol = headers.indexOf('ItemOrder');
+
+  const settings = {};
+  Object.keys(DEFAULT_SYSTEM_SETTINGS).forEach(k => {
+    settings[k] = [];
+  });
+
+  const catRows = {};
+  for (let i = 1; i < data.length; i++) {
+    const cat = String(data[i][catCol] || '').trim();
+    const val = String(data[i][valCol] || '').trim();
+    const order = Number(data[i][orderCol]) || i;
+    if (!cat || !val) continue;
+    if (!catRows[cat]) catRows[cat] = [];
+    catRows[cat].push({ val, order });
+  }
+
+  Object.keys(DEFAULT_SYSTEM_SETTINGS).forEach(cat => {
+    if (catRows[cat] && catRows[cat].length > 0) {
+      catRows[cat].sort((a, b) => a.order - b.order);
+      settings[cat] = catRows[cat].map(item => item.val);
+    } else {
+      settings[cat] = [...DEFAULT_SYSTEM_SETTINGS[cat]];
+    }
+  });
+
+  return settings;
+}
+
+/**
+ * Public: Retrieves system settings from CacheService or database.
+ */
+function api_getSystemSettings() {
+  try {
+    const cache = CacheService.getScriptCache();
+    const cached = cache.get('system_settings');
+    if (cached) {
+      return { success: true, data: JSON.parse(cached) };
+    }
+    const settings = getOrCreateSettingsFromDb_();
+    try {
+      cache.put('system_settings', JSON.stringify(settings), 300);
+    } catch (_) {}
+    return { success: true, data: settings };
+  } catch (err) {
+    Logger.log('api_getSystemSettings error: ' + err.message);
+    return { success: true, data: DEFAULT_SYSTEM_SETTINGS };
+  }
+}
+
+/**
+ * Public: Updates a category of system settings and clears all relevant caches.
+ * @param {string} categoryKey
+ * @param {Array<string>} itemsArray
+ */
+function api_updateSystemSettings(categoryKey, itemsArray) {
+  const auth = requireRole_(['Admin', 'HR']);
+  if (!auth.authorized) return { success: false, error: auth.error };
+
+  try {
+    if (!categoryKey) throw new Error('categoryKey is required');
+    if (!Array.isArray(itemsArray)) throw new Error('itemsArray must be an array');
+
+    const ss = getSpreadsheet_();
+    let sheet = ss.getSheetByName(SHEET_SETTINGS);
+    if (!sheet) {
+      getOrCreateSettingsFromDb_();
+      sheet = ss.getSheetByName(SHEET_SETTINGS);
+    }
+
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0];
+    const idCol = headers.indexOf('SettingID');
+    const catCol = headers.indexOf('Category');
+    const valCol = headers.indexOf('ItemValue');
+    const orderCol = headers.indexOf('ItemOrder');
+    const metaCol = headers.indexOf('ItemMeta');
+    const createdCol = headers.indexOf('CreatedAt');
+    const updatedCol = headers.indexOf('UpdatedAt');
+
+    const now = new Date().toISOString();
+
+    const retainedRows = [];
+    for (let i = 1; i < data.length; i++) {
+      const rowCat = String(data[i][catCol] || '').trim();
+      if (rowCat !== categoryKey) {
+        retainedRows.push(data[i]);
+      }
+    }
+
+    let maxIdNum = 0;
+    for (let i = 1; i < data.length; i++) {
+      const idStr = String(data[i][idCol] || '');
+      const m = idStr.match(/\d+/);
+      if (m) {
+        const num = parseInt(m[0], 10);
+        if (num > maxIdNum) maxIdNum = num;
+      }
+    }
+
+    const newCategoryRows = itemsArray.map((item, idx) => {
+      maxIdNum++;
+      const val = typeof item === 'object' && item !== null ? (item.val || item.value || JSON.stringify(item)) : String(item).trim();
+      const meta = typeof item === 'object' && item !== null && item.meta ? JSON.stringify(item.meta) : '';
+      return [
+        'SET-' + String(maxIdNum).padStart(4, '0'),
+        categoryKey,
+        val,
+        idx + 1,
+        meta,
+        now,
+        now
+      ];
+    });
+
+    const allRows = [headers, ...retainedRows, ...newCategoryRows];
+
+    sheet.clearContents();
+    sheet.getRange(1, 1, allRows.length, headers.length).setValues(allRows);
+
+    // [STRICT CACHE INVALIDATION] Invalidate both cache keys prior to returning
+    CacheService.getScriptCache().remove('dashboard_data');
+    CacheService.getScriptCache().remove('system_settings');
+
+    const updatedSettings = getOrCreateSettingsFromDb_();
+    api_writeLog_('SETTINGS', Session.getActiveUser().getEmail(), 'Updated System Settings: ' + categoryKey);
+
+    return { success: true, settings: updatedSettings };
+  } catch (e) {
+    Logger.log('api_updateSystemSettings error: ' + e);
     return { success: false, error: e.message };
   }
 }

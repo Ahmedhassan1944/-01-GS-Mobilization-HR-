@@ -88,6 +88,9 @@ function api_getDashboardData() {
     }
     // ───────────────────────────────────────────────────────────────────
 
+    const settingsRes = typeof api_getSystemSettings === 'function' ? api_getSystemSettings() : { success: true, data: DEFAULT_SYSTEM_SETTINGS };
+    const settings = (settingsRes && settingsRes.success && settingsRes.data) ? settingsRes.data : DEFAULT_SYSTEM_SETTINGS;
+
     const candsRes = api_getAllCandidates();
     if (!candsRes.success) throw new Error(candsRes.error);
     const docsRes  = api_getAllDocuments();
@@ -95,7 +98,7 @@ function api_getDashboardData() {
     const eventsRes = api_getAllUpcomingEvents();
     if (!eventsRes.success) throw new Error(eventsRes.error);
     const allCandidates = candsRes.data;
-    const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+    const EXCLUDED_KPI_STATUSES = new Set(settings.excludedStatuses || ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
     const candidates = allCandidates;
     const allDocs    = docsRes.data;
     const activeEvents = eventsRes.data;
@@ -125,6 +128,15 @@ function api_getDashboardData() {
     let unfitPcr           = 0;
     let unfitInjury        = 0;
     let rejected           = 0;
+
+    // Dynamic status & batch counters
+    const statusCounts = {};
+    (settings.statuses || []).forEach(st => { statusCounts[st] = 0; });
+
+    const batchCounts = {};
+    const allBatches = [...(settings.staffBatches || []), ...(settings.kalhatBatches || [])];
+    allBatches.forEach(b => { batchCounts[b] = 0; });
+
     candidates.forEach(cand => {
       const status = (cand.CurrentStatus || '').trim();
       if (!EXCLUDED_KPI_STATUSES.has(status)) activeCount++;
@@ -142,9 +154,23 @@ function api_getDashboardData() {
       if (status === 'Unfit-PCR')                      unfitPcr++;
       if (status === 'Unfit-Injury')                   unfitInjury++;
       if (status === 'Rejected')                       rejected++;
+
+      if (statusCounts[status] !== undefined) statusCounts[status]++;
+
+      // Dynamic batch matching (supports "Staff Batch N", "Batch N", "Kalhat Batch N")
+      const cBatch = (cand.Batch_Number || cand['Batch Number'] || '').toString().trim().toLowerCase().replace(/[-_]/g, ' ').replace(/^staff\s+/, '');
+      if (cBatch) {
+        allBatches.forEach(b => {
+          const normB = b.toString().trim().toLowerCase().replace(/[-_]/g, ' ').replace(/^staff\s+/, '');
+          if (cBatch === normB) {
+            batchCounts[b] = (batchCounts[b] || 0) + 1;
+          }
+        });
+      }
     });
+
     // ── Document-based counters ────────────────────────────────────
-    const REQUIRED_DOCS = [
+    const REQUIRED_DOCS = settings.documentTypes || [
       'Passport', 'Photo', 'Academic Certificate',
       'Medical Examination', 'Medical Analysis', 'Visa', 'CV'
     ];
@@ -164,10 +190,6 @@ function api_getDashboardData() {
         else                 missingCount[dt]++;
       });
     });
-    
-    // ── Pending Validation counter ──────────────────────────────────
-    // REMOVED: Document approval workflow was removed, there is no pending validation.
-    // ────────────────────────────────────────────────────────────────
     
     // ── Calendar-based counters ────────────────────────────────────
     const todayDate = new Date();
@@ -198,6 +220,7 @@ function api_getDashboardData() {
 
     const _result = {
       success: true,
+      settings: settings,
       data: {
         // Status-based
         activeCount,
@@ -215,24 +238,26 @@ function api_getDashboardData() {
         unfitPcr,
         unfitInjury,
         rejected,
-        // Document Pending Validation
-        // pendingValidation removed
+        statusCounts,
+        batchCounts,
+        hasCount,
+        missingCount,
         // Document HAS counts
-        hasPassport:      hasCount['Passport'],
-        hasPhoto:         hasCount['Photo'],
-        hasAcademicCert:  hasCount['Academic Certificate'],
-        hasMedicalExam:   hasCount['Medical Examination'],
-        hasMedicalAnalysis: hasCount['Medical Analysis'],
-        hasVisa:          hasCount['Visa'],
-        hasCV:            hasCount['CV'],
+        hasPassport:      hasCount['Passport'] || 0,
+        hasPhoto:         hasCount['Photo'] || 0,
+        hasAcademicCert:  hasCount['Academic Certificate'] || 0,
+        hasMedicalExam:   hasCount['Medical Examination'] || 0,
+        hasMedicalAnalysis: hasCount['Medical Analysis'] || 0,
+        hasVisa:          hasCount['Visa'] || 0,
+        hasCV:            hasCount['CV'] || 0,
         // Document MISSING counts
-        missingPassport:       missingCount['Passport'],
-        missingPhoto:          missingCount['Photo'],
-        missingAcademicCert:   missingCount['Academic Certificate'],
-        missingMedicalExam:    missingCount['Medical Examination'],
-        missingMedicalAnalysis:missingCount['Medical Analysis'],
-        missingVisa:           missingCount['Visa'],
-        missingCV:             missingCount['CV'],
+        missingPassport:       missingCount['Passport'] || 0,
+        missingPhoto:          missingCount['Photo'] || 0,
+        missingAcademicCert:   missingCount['Academic Certificate'] || 0,
+        missingMedicalExam:    missingCount['Medical Examination'] || 0,
+        missingMedicalAnalysis:missingCount['Medical Analysis'] || 0,
+        missingVisa:           missingCount['Visa'] || 0,
+        missingCV:             missingCount['CV'] || 0,
         // Calendar-based
         eventsToday,
         eventsTomorrow,

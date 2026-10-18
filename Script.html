@@ -36,7 +36,96 @@
       statusFilters: [],        // [] = all; otherwise array of status strings to INCLUDE
       excludeStatusFilters: [], // [] = none excluded; otherwise statuses to HIDE
       docFilters: [],           // array of doc-type strings meaning "missing these"
+      // ── System Configuration Settings (Defaults) ───────────
+      settings: {
+        staffBatches: [
+          'Staff Batch 1',
+          'Staff Batch 2',
+          'Staff Batch 3',
+          'Staff Batch 4',
+          'Staff Batch 5'
+        ],
+        kalhatBatches: [
+          'Kalhat Batch 1',
+          'Kalhat Batch 2'
+        ],
+        statuses: [
+          'New Candidate',
+          'Pending Passport',
+          'Pending Photo',
+          'Pending Academic Certificate',
+          'Pending Medical',
+          'Booked a medical examination',
+          'Documents Under Preparing',
+          'Documents Complete',
+          'Visa Pending',
+          'Visa Completed',
+          'Mobilized',
+          'Talent Acquisition Issues',
+          'Renewal Passport',
+          'Not Available',
+          'Creating WhatsApp Group',
+          'Unfit-PCR',
+          'Unfit-Injury',
+          'Rejected',
+          'Closed'
+        ],
+        excludedStatuses: [
+          'Closed',
+          'Rejected',
+          'Unfit-Injury',
+          'Unfit-PCR'
+        ],
+        recruitmentTypes: [
+          'Internal',
+          'External'
+        ],
+        documentTypes: [
+          'Passport',
+          'Photo',
+          'Academic Certificate',
+          'Medical Examination',
+          'Medical Analysis',
+          'Visa',
+          'CV'
+        ],
+        departments: [
+          'Projects',
+          'Maintenance',
+          'Finance',
+          'HR',
+          'Operations',
+          'IT',
+          'Safety'
+        ],
+        nationalities: [
+          'Egyptian',
+          'Sudanese',
+          'Jordanian',
+          'Saudi',
+          'Yemeni',
+          'Moroccan',
+          'Other'
+        ],
+        positions: [
+          'Civil Engineer',
+          'Electrical Engineer',
+          'Mechanical Engineer',
+          'Safety Officer',
+          'Surveyor',
+          'Foreman',
+          'HR Specialist',
+          'Accountant',
+          'Admin'
+        ]
+      },
       sidebarCollapsed: false, // ── Sidebar collapse state ──
+    },
+
+    getAllBatches() {
+      const sb = (this.state.settings && this.state.settings.staffBatches) || [];
+      const kb = (this.state.settings && this.state.settings.kalhatBatches) || [];
+      return [...sb, ...kb];
     },
 
     setState(partial) {
@@ -186,6 +275,7 @@
 
       if (fnName === 'api_getDashboardData') return {
         success: true,
+        settings: App.state.settings,
         data: {
           // Status-based
           activeCount: 24, missingDocs: 9, visaPending: 6, visaCompleted: 4, mobilized: 8,
@@ -198,6 +288,14 @@
           missingMedicalExam: 14, missingMedicalAnalysis: 16, missingVisa: 18, missingCV: 9,
         }
       };
+      if (fnName === 'api_getSystemSettings') return { success: true, data: App.state.settings };
+      if (fnName === 'api_updateSystemSettings') {
+        const [cat, items] = args;
+        if (cat && items) {
+          App.state.settings[cat] = items;
+        }
+        return { success: true, settings: App.state.settings };
+      }
       if (fnName === 'api_getAllDocuments') return { success: true, data: documents };
       if (fnName === 'api_getAllCandidates') return { success: true, data: candidates };
       if (fnName === 'api_createCandidate') return { success: true, candidateId: 'new-' + Date.now() };
@@ -470,6 +568,7 @@
     { view: 'documents-center', icon: '📁', label: 'Documents Center' },
     { view: 'calendar', icon: '📅', label: 'Calendar', badge: () => (App.state.calendarEvents || []).filter(e => e.Status === 'Active').length || '' },
     { view: 'audit', icon: '📋', label: 'Audit Log' },
+    { view: 'settings', icon: '⚙️', label: 'Settings' },
   ];
 
   const renderSidebar = () => {
@@ -516,6 +615,7 @@
     else if (currentView === 'calendar') Views.calendar(view);
     else if (currentView === 'audit') Views.auditLog(view);
     else if (currentView === 'documents-center') Views.documentsCenter(view);
+    else if (currentView === 'settings') Views.settings(view);
     else view.innerHTML = '<div class="loading-overlay">404 — View not found.</div>';
   };
 
@@ -613,7 +713,7 @@
                   </tr>
                 </thead>
                 <tbody id="kpi-grid-batch">
-                  ${[...Array(4)].map(() => `<tr><td class="dash-kpi-cell-name"><div class="skeleton" style="height:20px;border-radius:4px;width:65%"></div></td><td class="dash-kpi-cell-count text-right"><div class="skeleton" style="height:20px;border-radius:9999px;width:30px;margin-left:auto"></div></td></tr>`).join('')}
+                  ${[...Array(5)].map(() => `<tr><td class="dash-kpi-cell-name"><div class="skeleton" style="height:20px;border-radius:4px;width:65%"></div></td><td class="dash-kpi-cell-count text-right"><div class="skeleton" style="height:20px;border-radius:9999px;width:30px;margin-left:auto"></div></td></tr>`).join('')}
                 </tbody>
               </table>
             </div>
@@ -1012,7 +1112,7 @@
         ? allCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
         : allCands;
 
-      const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+      const EXCLUDED_KPI_STATUSES = new Set(App.state.settings?.excludedStatuses || ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
       const activeBaseCands = baseCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
       const k = Views._computeDashboardKpis(baseCands, App.state.docCompleteness);
 
@@ -1022,31 +1122,39 @@
     },
 
     _normBatch(v) {
-      return (v || '').toString().trim().toLowerCase().replace(/[-_]/g, ' ');
+      let str = (v || '').toString().trim().toLowerCase().replace(/[-_]/g, ' ');
+      if (str.startsWith('staff batch')) {
+        str = str.replace(/^staff\s+/, '');
+      }
+      return str;
     },
     _getBatchValue(c) {
       return c.Batch_Number || c['Batch Number'] || '';
     },
     _getBatchCardsHtml(activeCands) {
-      const STAFF_BATCHES = [
-        { name: 'Staff Batch 1', filterValue: 'Batch 1', icon: '1️⃣', color: 'blue' },
-        { name: 'Staff Batch 2', filterValue: 'Batch 2', icon: '2️⃣', color: 'purple' },
-        { name: 'Staff Batch 3', filterValue: 'Batch 3', icon: '3️⃣', color: 'green' },
-        { name: 'Staff Batch 4', filterValue: 'Batch 4', icon: '4️⃣', color: 'teal' }
+      const staffBatches = (App.state.settings && App.state.settings.staffBatches) || [
+        'Staff Batch 1', 'Staff Batch 2', 'Staff Batch 3', 'Staff Batch 4', 'Staff Batch 5'
       ];
-      return STAFF_BATCHES.map(b => {
-        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(b.filterValue)).length;
-        return Views._kpiTableRow(b.name, count, b.icon, b.color, `Candidates in ${b.name}`, { type: 'batchNumber', value: b.filterValue });
+      const icons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
+      const colors = ['blue', 'purple', 'green', 'teal', 'orange', 'cyan', 'pink', 'indigo'];
+      return staffBatches.map((name, idx) => {
+        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(name)).length;
+        const icon = icons[idx % icons.length];
+        const color = colors[idx % colors.length];
+        return Views._kpiTableRow(name, count, icon, color, `Candidates in ${name}`, { type: 'batchNumber', value: name });
       }).join('');
     },
     _getKalhatBatchCardsHtml(activeCands) {
-      const KALHAT_BATCHES = [
-        { name: 'Kalhat Batch 1', filterValue: 'Kalhat Batch 1', icon: '1️⃣', color: 'blue' },
-        { name: 'Kalhat Batch 2', filterValue: 'Kalhat Batch 2', icon: '2️⃣', color: 'purple' }
+      const kalhatBatches = (App.state.settings && App.state.settings.kalhatBatches) || [
+        'Kalhat Batch 1', 'Kalhat Batch 2'
       ];
-      return KALHAT_BATCHES.map(b => {
-        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(b.filterValue)).length;
-        return Views._kpiTableRow(b.name, count, b.icon, b.color, `Candidates in ${b.name}`, { type: 'batchNumber', value: b.filterValue });
+      const icons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
+      const colors = ['blue', 'purple', 'green', 'teal'];
+      return kalhatBatches.map((name, idx) => {
+        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(name)).length;
+        const icon = icons[idx % icons.length];
+        const color = colors[idx % colors.length];
+        return Views._kpiTableRow(name, count, icon, color, `Candidates in ${name}`, { type: 'batchNumber', value: name });
       }).join('');
     },
 
@@ -1134,10 +1242,13 @@
         if (kpiRes.success) {
           const k = kpiRes.data;
           Views._kpiData = k;
+          if (kpiRes.settings) {
+            App.setState({ settings: kpiRes.settings });
+          }
           Views._injectExportButton();
 
           const allCands = candsRes.data || [];
-          const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+          const EXCLUDED_KPI_STATUSES = new Set(App.state.settings?.excludedStatuses || ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
           const activeCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
 
           Views._renderDashboardKpis(k, activeCands, activeCands);
@@ -1330,8 +1441,7 @@
 
         const matchPos = !posFilter || c.Position === posFilter;
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
-        const matchNat = !natFilter || c.Nationality === natFilter;
-        const matchBatch = !batchFilter || (Views._getBatchValue ? Views._getBatchValue(c) === batchFilter : c.Batch_Number === batchFilter) || c.Batch_Number === batchFilter;
+        const matchBatch = !batchFilter || (Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(batchFilter));
         if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;
         // Include status
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
@@ -1922,6 +2032,12 @@
       const natSet = new Set();
       const batchSet = new Set();
 
+      // Seed from dynamic system settings so all configured options (including Staff Batch 5) appear
+      App.getAllBatches().forEach(b => batchSet.add(b));
+      (App.state.settings?.statuses || []).forEach(s => statusSet.add(s));
+      (App.state.settings?.nationalities || []).forEach(n => natSet.add(n));
+      (App.state.settings?.positions || []).forEach(p => posSet.add(p));
+
       candidates.forEach(c => {
         if (c.Position) posSet.add(c.Position.trim());
         if (c.CurrentStatus) statusSet.add(c.CurrentStatus.trim());
@@ -1996,7 +2112,7 @@
         const matchPos = !posFilter || c.Position === posFilter;
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter;
-        const matchBatch = !batchFilter || (Views._getBatchValue ? Views._getBatchValue(c) === batchFilter : c.Batch_Number === batchFilter) || c.Batch_Number === batchFilter;
+        const matchBatch = !batchFilter || (Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(batchFilter));
         // Multi-select status INCLUDE (empty array = all pass)
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Multi-select status EXCLUDE (empty array = nothing excluded)
@@ -3121,6 +3237,18 @@
             <input type="tel" class="form-input" id="edit-phone" value="${escHtml(c.Phone || '')}" required />
           </div>
           <div class="form-group col-span-2">
+            <label class="form-label" for="edit-batch">Batch Number</label>
+            <select class="form-select" id="edit-batch">
+              <option value="">— Not assigned —</option>
+              <optgroup label="Staff Batches">
+                ${(App.state.settings?.staffBatches || ['Staff Batch 1', 'Staff Batch 2', 'Staff Batch 3', 'Staff Batch 4', 'Staff Batch 5']).map(b => `<option value="${escHtml(b)}" ${Views._normBatch(c.Batch_Number || c.batchNumber) === Views._normBatch(b) ? 'selected' : ''}>${escHtml(b)}</option>`).join('')}
+              </optgroup>
+              <optgroup label="Kalhat Batches">
+                ${(App.state.settings?.kalhatBatches || ['Kalhat Batch 1', 'Kalhat Batch 2']).map(b => `<option value="${escHtml(b)}" ${Views._normBatch(c.Batch_Number || c.batchNumber) === Views._normBatch(b) ? 'selected' : ''}>${escHtml(b)}</option>`).join('')}
+              </optgroup>
+            </select>
+          </div>
+          <div class="form-group col-span-2">
             <label class="form-label" for="edit-notes">Notes</label>
             <textarea class="form-textarea" id="edit-notes" rows="4" placeholder="Add additional instructions or remarks...">${escHtml(c.Notes || '')}</textarea>
           </div>
@@ -3214,6 +3342,7 @@
     async _submitEditProfile(candidateId) {
       const phone = document.getElementById('edit-phone')?.value?.trim();
       const notes = document.getElementById('edit-notes')?.value?.trim();
+      const batchNumber = document.getElementById('edit-batch')?.value?.trim() || '';
 
       if (!phone) { Toast.warning('Phone number is required.'); return; }
 
@@ -3224,7 +3353,7 @@
       const localServerPath = (Views._editingLocalPaths || []).join('\n');
 
       try {
-        const res = await GAS.call('api_updateCandidateDetails', candidateId, { phone, notes, localServerPath });
+        const res = await GAS.call('api_updateCandidateDetails', candidateId, { phone, notes, localServerPath, batchNumber });
         if (!res.success) throw new Error(res.error);
 
         // Update local state
@@ -3233,11 +3362,15 @@
           cand.Phone = phone;
           cand.Notes = notes;
           cand.LocalServerPath = localServerPath;
+          cand.Batch_Number = batchNumber;
+          cand.batchNumber = batchNumber;
         }
         if (App.state.selectedCandidate?.CandidateID === candidateId) {
           App.state.selectedCandidate.Phone = phone;
           App.state.selectedCandidate.Notes = notes;
           App.state.selectedCandidate.LocalServerPath = localServerPath;
+          App.state.selectedCandidate.Batch_Number = batchNumber;
+          App.state.selectedCandidate.batchNumber = batchNumber;
         }
 
         Views._editingLocalPaths = [];
@@ -3408,8 +3541,7 @@
                 <label class="form-label" for="nc-nationality">Nationality <span class="required">*</span></label>
                 <select class="form-select" id="nc-nationality" required>
                   <option value="">Select nationality…</option>
-                  <option>Egyptian</option><option>Sudanese</option><option>Jordanian</option>
-                  <option>Saudi</option><option>Yemeni</option><option>Moroccan</option><option>Other</option>
+                  ${(App.state.settings?.nationalities || ['Egyptian', 'Sudanese', 'Jordanian', 'Saudi', 'Yemeni', 'Moroccan', 'Other']).map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group">
@@ -3420,8 +3552,7 @@
                 <label class="form-label" for="nc-department">Department <span class="required">*</span></label>
                 <select class="form-select" id="nc-department" required>
                   <option value="">Select department…</option>
-                  <option>Projects</option><option>Maintenance</option><option>Finance</option>
-                  <option>HR</option><option>Operations</option><option>IT</option><option>Safety</option>
+                  ${(App.state.settings?.departments || ['Projects', 'Maintenance', 'Finance', 'HR', 'Operations', 'IT', 'Safety']).map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')}
                 </select>
               </div>
               <div class="form-group">
@@ -3448,12 +3579,12 @@
                 <label class="form-label" for="nc-batch">Batch Number <span class="form-optional">(Optional)</span></label>
                 <select class="form-select" id="nc-batch">
                   <option value="">— Not assigned —</option>
-                  <option value="Batch 1">Staff Batch 1</option>
-                  <option value="Batch 2">Staff Batch 2</option>
-                  <option value="Batch 3">Staff Batch 3</option>
-                  <option value="Batch 4">Staff Batch 4</option>
-                  <option value="Kalhat Batch 1">Kalhat Batch 1</option>
-                  <option value="Kalhat Batch 2">Kalhat Batch 2</option>
+                  <optgroup label="Staff Batches">
+                    ${(App.state.settings?.staffBatches || ['Staff Batch 1', 'Staff Batch 2', 'Staff Batch 3', 'Staff Batch 4', 'Staff Batch 5']).map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('')}
+                  </optgroup>
+                  <optgroup label="Kalhat Batches">
+                    ${(App.state.settings?.kalhatBatches || ['Kalhat Batch 1', 'Kalhat Batch 2']).map(b => `<option value="${escHtml(b)}">${escHtml(b)}</option>`).join('')}
+                  </optgroup>
                 </select>
               </div>
             </div>
@@ -5180,6 +5311,270 @@
         Toast.error(err.message);
         btn.disabled = false;
         btn.innerHTML = 'Save Date';
+      }
+    },
+
+    // ── SYSTEM SETTINGS VIEW ───────────────────
+    settings(container) {
+      container.innerHTML = `
+      <div class="page-header">
+        <div>
+          <h1 class="page-header__title">⚙️ System Settings</h1>
+          <p class="page-header__sub">Configure batches, mobilization statuses, document requirements, and enterprise metadata dynamically without code modifications.</p>
+        </div>
+        <div class="page-header__actions">
+          <button class="btn btn--outline btn--sm" onclick="Views._reloadSettingsFromBackend()">
+            🔄 Reload from Database
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-grid" id="settings-grid-container">
+        ${Views._renderSettingsCardHtml('staffBatches', '📦 Staff Batches', 'Manage mobilization batches for staff (Staff Batch 1 to 5+).', App.state.settings?.staffBatches || [], 'e.g. Staff Batch 6')}
+        ${Views._renderSettingsCardHtml('kalhatBatches', '📦 Kalhat Batches', 'Manage batches designated for Kalhat site operations.', App.state.settings?.kalhatBatches || [], 'e.g. Kalhat Batch 3')}
+        ${Views._renderStatusSettingsCardHtml()}
+        ${Views._renderSettingsCardHtml('documentTypes', '📄 Canonical Document Types', 'Manage required documents tracked across candidates.', App.state.settings?.documentTypes || [], 'e.g. Driving License')}
+        ${Views._renderSettingsCardHtml('departments', '🏢 Departments', 'Manage corporate departments for candidate assignment.', App.state.settings?.departments || [], 'e.g. Logistics')}
+        ${Views._renderSettingsCardHtml('nationalities', '🌍 Nationalities', 'Manage selectable candidate nationalities.', App.state.settings?.nationalities || [], 'e.g. Tunisian')}
+        ${Views._renderSettingsCardHtml('positions', '💼 Job Positions', 'Manage common candidate job positions.', App.state.settings?.positions || [], 'e.g. QA/QC Inspector')}
+      </div>`;
+    },
+
+    _renderSettingsCardHtml(categoryKey, title, description, items, placeholder) {
+      const count = items.length;
+      return `
+      <div class="settings-card" id="card-${categoryKey}">
+        <div class="settings-card__header">
+          <div class="settings-card__title-row">
+            <h2 class="settings-card__title">${title}</h2>
+            <span class="settings-card__badge" id="badge-${categoryKey}">${count} Item${count !== 1 ? 's' : ''}</span>
+          </div>
+          <p class="settings-card__desc">${description}</p>
+        </div>
+        <div class="settings-card__body" id="list-${categoryKey}">
+          ${items.map((item, idx) => Views._renderSettingRowHtml(categoryKey, item, idx, items.length)).join('')}
+        </div>
+        <div class="settings-card__add-box">
+          <input type="text" id="input-add-${categoryKey}" class="form-input" placeholder="${escHtml(placeholder)}" onkeydown="if(event.key==='Enter')Views._addSettingItem('${categoryKey}')" />
+          <button type="button" class="btn btn--outline btn--sm" onclick="Views._addSettingItem('${categoryKey}')">＋ Add</button>
+        </div>
+        <div class="settings-card__footer">
+          <button type="button" class="btn btn--primary btn--sm" id="btn-save-${categoryKey}" onclick="Views._saveSettingCategory('${categoryKey}')">
+            💾 Save Changes
+          </button>
+        </div>
+      </div>`;
+    },
+
+    _renderSettingRowHtml(categoryKey, item, idx, total) {
+      const isFirst = idx === 0;
+      const isLast = idx === total - 1;
+      return `
+      <div class="settings-item-row" id="row-${categoryKey}-${idx}">
+        <div class="settings-item-label-wrap">
+          <span class="settings-item-idx">#${idx + 1}</span>
+          <span class="settings-item-name" id="name-${categoryKey}-${idx}">${escHtml(item)}</span>
+        </div>
+        <div class="settings-item-actions">
+          <button type="button" class="settings-btn-icon" title="Move Up" ${isFirst ? 'disabled' : ''} onclick="Views._moveSettingItem('${categoryKey}', ${idx}, -1)">▲</button>
+          <button type="button" class="settings-btn-icon" title="Move Down" ${isLast ? 'disabled' : ''} onclick="Views._moveSettingItem('${categoryKey}', ${idx}, 1)">▼</button>
+          <button type="button" class="settings-btn-icon" title="Edit" onclick="Views._editSettingItem('${categoryKey}', ${idx})">✏️</button>
+          <button type="button" class="settings-btn-icon settings-btn-icon--delete" title="Delete" onclick="Views._deleteSettingItem('${categoryKey}', ${idx})">🗑️</button>
+        </div>
+      </div>`;
+    },
+
+    _renderStatusSettingsCardHtml() {
+      const statuses = App.state.settings?.statuses || [];
+      const excluded = new Set(App.state.settings?.excludedStatuses || []);
+      const count = statuses.length;
+      return `
+      <div class="settings-card" id="card-statuses">
+        <div class="settings-card__header">
+          <div class="settings-card__title-row">
+            <h2 class="settings-card__title">📊 Mobilization Statuses & Exclusion Rules</h2>
+            <span class="settings-card__badge" id="badge-statuses">${count} Statuses</span>
+          </div>
+          <p class="settings-card__desc">Manage candidate pipeline stages. Toggle "Exclude from Active KPI" to omit inactive or terminal cases from Active KPI counters.</p>
+        </div>
+        <div class="settings-card__body" id="list-statuses">
+          ${statuses.map((st, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === statuses.length - 1;
+            const isExcluded = excluded.has(st);
+            return `
+            <div class="settings-item-row" id="row-statuses-${idx}">
+              <div class="settings-item-label-wrap" style="flex-wrap:wrap">
+                <span class="settings-item-idx">#${idx + 1}</span>
+                <span class="settings-item-name">${escHtml(st)}</span>
+                <label class="settings-checkbox-label" title="When checked, candidates with this status are omitted from Active KPI counters">
+                  <input type="checkbox" ${isExcluded ? 'checked' : ''} onchange="Views._toggleStatusExclusion('${escHtml(st).replace(/'/g, "\\'")}', this.checked)" />
+                  <span>Exclude from Active KPI</span>
+                </label>
+              </div>
+              <div class="settings-item-actions">
+                <button type="button" class="settings-btn-icon" title="Move Up" ${isFirst ? 'disabled' : ''} onclick="Views._moveSettingItem('statuses', ${idx}, -1)">▲</button>
+                <button type="button" class="settings-btn-icon" title="Move Down" ${isLast ? 'disabled' : ''} onclick="Views._moveSettingItem('statuses', ${idx}, 1)">▼</button>
+                <button type="button" class="settings-btn-icon" title="Edit" onclick="Views._editSettingItem('statuses', ${idx})">✏️</button>
+                <button type="button" class="settings-btn-icon settings-btn-icon--delete" title="Delete" onclick="Views._deleteSettingItem('statuses', ${idx})">🗑️</button>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="settings-card__add-box">
+          <input type="text" id="input-add-statuses" class="form-input" placeholder="e.g. Visa Issued (Awaiting Flight)" onkeydown="if(event.key==='Enter')Views._addSettingItem('statuses')" />
+          <button type="button" class="btn btn--outline btn--sm" onclick="Views._addSettingItem('statuses')">＋ Add</button>
+        </div>
+        <div class="settings-card__footer">
+          <button type="button" class="btn btn--primary btn--sm" id="btn-save-statuses" onclick="Views._saveSettingCategory('statuses')">
+            💾 Save Statuses & Rules
+          </button>
+        </div>
+      </div>`;
+    },
+
+    _addSettingItem(categoryKey) {
+      const input = document.getElementById(`input-add-${categoryKey}`);
+      const val = (input?.value || '').trim();
+      if (!val) {
+        Toast.warning('Please enter a value.');
+        return;
+      }
+      if (!App.state.settings[categoryKey]) App.state.settings[categoryKey] = [];
+      const list = App.state.settings[categoryKey];
+      if (list.includes(val)) {
+        Toast.warning(`"${val}" already exists in ${categoryKey}.`);
+        return;
+      }
+      list.push(val);
+      input.value = '';
+      Views._refreshSettingsCard(categoryKey);
+      Toast.info(`Added "${val}". Remember to Save Changes.`);
+    },
+
+    _moveSettingItem(categoryKey, idx, direction) {
+      const list = App.state.settings[categoryKey];
+      if (!list) return;
+      const newIdx = idx + direction;
+      if (newIdx < 0 || newIdx >= list.length) return;
+      const [item] = list.splice(idx, 1);
+      list.splice(newIdx, 0, item);
+      Views._refreshSettingsCard(categoryKey);
+    },
+
+    _editSettingItem(categoryKey, idx) {
+      const list = App.state.settings[categoryKey];
+      if (!list || !list[idx]) return;
+      const current = list[idx];
+      const updated = window.prompt(`Edit item in ${categoryKey}:`, current);
+      if (updated === null) return;
+      const trimmed = updated.trim();
+      if (!trimmed) {
+        Toast.warning('Item name cannot be empty.');
+        return;
+      }
+      if (trimmed !== current && list.includes(trimmed)) {
+        Toast.warning(`"${trimmed}" already exists.`);
+        return;
+      }
+      list[idx] = trimmed;
+      if (categoryKey === 'statuses') {
+        const excl = App.state.settings.excludedStatuses || [];
+        const eIdx = excl.indexOf(current);
+        if (eIdx !== -1) excl[eIdx] = trimmed;
+      }
+      Views._refreshSettingsCard(categoryKey);
+    },
+
+    _deleteSettingItem(categoryKey, idx) {
+      const list = App.state.settings[categoryKey];
+      if (!list || !list[idx]) return;
+      const val = list[idx];
+      if (!window.confirm(`Are you sure you want to remove "${val}" from ${categoryKey}?`)) return;
+      list.splice(idx, 1);
+      if (categoryKey === 'statuses' && App.state.settings.excludedStatuses) {
+        App.state.settings.excludedStatuses = App.state.settings.excludedStatuses.filter(s => s !== val);
+      }
+      Views._refreshSettingsCard(categoryKey);
+      Toast.info(`Removed "${val}". Remember to Save Changes.`);
+    },
+
+    _toggleStatusExclusion(status, isChecked) {
+      if (!App.state.settings.excludedStatuses) App.state.settings.excludedStatuses = [];
+      const list = App.state.settings.excludedStatuses;
+      if (isChecked && !list.includes(status)) {
+        list.push(status);
+      } else if (!isChecked && list.includes(status)) {
+        App.state.settings.excludedStatuses = list.filter(s => s !== status);
+      }
+    },
+
+    _refreshSettingsCard(categoryKey) {
+      const cardEl = document.getElementById(`card-${categoryKey}`);
+      if (!cardEl) return;
+      const tempWrap = document.createElement('div');
+      if (categoryKey === 'statuses') {
+        tempWrap.innerHTML = Views._renderStatusSettingsCardHtml();
+      } else {
+        const titles = {
+          staffBatches: ['📦 Staff Batches', 'Manage mobilization batches for staff (Staff Batch 1 to 5+).', 'e.g. Staff Batch 6'],
+          kalhatBatches: ['📦 Kalhat Batches', 'Manage batches designated for Kalhat site operations.', 'e.g. Kalhat Batch 3'],
+          documentTypes: ['📄 Canonical Document Types', 'Manage required documents tracked across candidates.', 'e.g. Driving License'],
+          departments: ['🏢 Departments', 'Manage corporate departments for candidate assignment.', 'e.g. Logistics'],
+          nationalities: ['🌍 Nationalities', 'Manage selectable candidate nationalities.', 'e.g. Tunisian'],
+          positions: ['💼 Job Positions', 'Manage common candidate job positions.', 'e.g. QA/QC Inspector']
+        };
+        const info = titles[categoryKey] || [categoryKey, '', 'New item'];
+        tempWrap.innerHTML = Views._renderSettingsCardHtml(categoryKey, info[0], info[1], App.state.settings[categoryKey] || [], info[2]);
+      }
+      const newCard = tempWrap.firstElementChild;
+      cardEl.replaceWith(newCard);
+    },
+
+    async _saveSettingCategory(categoryKey) {
+      const btn = document.getElementById(`btn-save-${categoryKey}`);
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner spinner--sm"></span> Saving…`;
+      }
+      try {
+        const items = App.state.settings[categoryKey] || [];
+        const res = await GAS.call('api_updateSystemSettings', categoryKey, items);
+        if (!res.success) throw new Error(res.error);
+
+        if (categoryKey === 'statuses') {
+          const exclRes = await GAS.call('api_updateSystemSettings', 'excludedStatuses', App.state.settings.excludedStatuses || []);
+          if (!exclRes.success) throw new Error(exclRes.error);
+        }
+
+        if (res.settings) {
+          App.setState({ settings: res.settings });
+        }
+        Toast.success(`✅ Saved ${categoryKey} successfully!`);
+      } catch (err) {
+        Toast.error('Save failed: ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = `💾 Save Changes`;
+        }
+      }
+    },
+
+    async _reloadSettingsFromBackend() {
+      try {
+        Toast.info('Reloading settings from database…');
+        const res = await GAS.call('api_getSystemSettings');
+        if (res && res.success && res.data) {
+          App.setState({ settings: res.data });
+          const view = document.getElementById('app-view');
+          if (view) Views.settings(view);
+          Toast.success('Settings synchronized successfully.');
+        } else {
+          throw new Error(res?.error || 'Unknown error');
+        }
+      } catch (err) {
+        Toast.error('Reload failed: ' + err.message);
       }
     }
   };
