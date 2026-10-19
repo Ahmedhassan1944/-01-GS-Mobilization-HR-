@@ -416,6 +416,12 @@
     }
   };
 
+  const DocumentsCenter = {
+    downloadSelectedZip() {
+      Views._dcDownload();
+    }
+  };
+
   // ─────────────────────────────────────────────
   // UTILITY HELPERS
   // ─────────────────────────────────────────────
@@ -4266,6 +4272,10 @@
       }
     },
 
+    documents(container) {
+      return this.documentsCenter(container);
+    },
+
     documentsCenter(container) {
       // Always reset filter state and force a fresh load so stale filters never hide candidates
       const dc = App.state.documentsCenter = {
@@ -4288,15 +4298,59 @@
       if (natEl) natEl.value = '';
       if (searchEl) searchEl.value = '';
 
+      // 1. Calculate Expired Documents
+      const _now = new Date();
+      let expPassport = 0, expMedExam = 0, expMedAnalysis = 0, expVisa = 0;
+
+      (App.state.documents || []).forEach(doc => {
+        if (doc.ExpiryDate || doc.expiryDate) {
+          const expDate = new Date(doc.ExpiryDate || doc.expiryDate);
+          if (expDate < _now) {
+            const dType = (doc.DocType || doc.docType || '').toLowerCase();
+            if (dType.includes('passport')) expPassport++;
+            if (dType.includes('medical examination')) expMedExam++;
+            if (dType.includes('medical analysis')) expMedAnalysis++;
+            if (dType.includes('visa')) expVisa++;
+          }
+        }
+      });
+
+      // 2. Build the Expiry KPIs HTML
+      const expiryKpisHtml = `
+<div class="dash-kpi-tables-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 16px; margin-bottom: 24px;">
+  <div class="kpi-card" style="border-left: 4px solid #ef4444; background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase;">Expired Passports</div>
+    <div style="font-size: 24px; color: #ef4444; font-weight: 700; margin-top: 8px;" id="dc-exp-passports">${expPassport}</div>
+  </div>
+  <div class="kpi-card" style="border-left: 4px solid #f97316; background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase;">Expired Med. Exams</div>
+    <div style="font-size: 24px; color: #f97316; font-weight: 700; margin-top: 8px;" id="dc-exp-med-exams">${expMedExam}</div>
+  </div>
+  <div class="kpi-card" style="border-left: 4px solid #eab308; background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase;">Expired Med. Analysis</div>
+    <div style="font-size: 24px; color: #eab308; font-weight: 700; margin-top: 8px;" id="dc-exp-med-analysis">${expMedAnalysis}</div>
+  </div>
+  <div class="kpi-card" style="border-left: 4px solid #3b82f6; background: #fff; padding: 16px; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">
+    <div style="font-size: 12px; color: #64748b; font-weight: 600; text-transform: uppercase;">Expired Visas</div>
+    <div style="font-size: 24px; color: #3b82f6; font-weight: 700; margin-top: 8px;" id="dc-exp-visas">${expVisa}</div>
+  </div>
+</div>
+`;
+
       container.innerHTML = `
     <div class="page-header">
       <div>
         <h1 class="page-header__title">📁 Documents Center</h1>
         <p class="page-header__sub">Batch collect · download · preview candidate documents</p>
       </div>
-      <div class="page-header__actions">
+      <div class="header-actions" style="display: flex; gap: 10px;">
         <button class="btn btn--outline btn--sm" id="dc-filter-toggle" onclick="Views._dcToggleFilter()">🔽 Filters</button>
-        <button class="btn btn--primary" id="dc-download-btn" onclick="Views._dcDownload()" disabled>⬇ Download ZIP</button>
+        <button class="btn btn--outline" onclick="Views._exportDocExpiryCSV()">
+          <span class="icon">📥</span> Export Expiry CSV
+        </button>
+        <button class="btn btn--primary" id="btn-download-zip" onclick="DocumentsCenter.downloadSelectedZip()" disabled>
+          <span class="icon">⬇️</span> Download ZIP
+        </button>
       </div>
     </div>
 
@@ -4356,6 +4410,8 @@
       <div class="kpi-card"><div class="kpi-card__icon">📄</div><div class="kpi-card__value" id="dc-stat-available">—</div><div class="kpi-card__label">Available Docs</div></div>
       <div class="kpi-card"><div class="kpi-card__icon">⚠️</div><div class="kpi-card__value" id="dc-stat-missing">—</div><div class="kpi-card__label">Missing Docs</div></div>
     </div>
+
+    ${expiryKpisHtml}
 
     <!-- Filter Panel -->
     <div class="filter-panel" id="dc-filter-panel">
@@ -4487,6 +4543,37 @@
         dc.filterOptions = fixedRes.filterOptions || {};
         dc.loaded = true;
 
+        Views._docFilteredCandidates = dc.filteredCandidates;
+
+        // Populate App.state.documents for instant expiry calculation
+        if (!App.state.documents || App.state.documents.length === 0) {
+          const synDocs = [];
+          list.forEach(c => {
+            const details = c.docDetails || {};
+            Object.keys(details).forEach(dType => {
+              const d = details[dType];
+              if (d && (d.expiryDate || d.issueDate || d.documentDate)) {
+                synDocs.push({
+                  CandidateID: c.candidateId,
+                  DocType: dType,
+                  ExpiryDate: d.expiryDate || d.issueDate || d.documentDate
+                });
+              }
+            });
+          });
+          App.state.documents = synDocs;
+          if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
+
+          GAS.call('api_getAllDocuments').then(dRes => {
+            if (dRes && dRes.success && Array.isArray(dRes.data)) {
+              App.state.documents = dRes.data;
+              if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
+            }
+          }).catch(() => {});
+        } else {
+          if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
+        }
+
         window.__dcLastResponseType = typeof res;
         Views._dcDebugUpdate(fixedRes);
         Views._dcPopulateFilterDropdowns();
@@ -4542,6 +4629,8 @@
         return true;
       });
 
+      Views._docFilteredCandidates = dc.filteredCandidates;
+
       // Clear selections that are no longer visible
       const visibleIds = new Set(dc.filteredCandidates.map(c => c.candidateId));
       dc.selectedIds.forEach(id => { if (!visibleIds.has(id)) dc.selectedIds.delete(id); });
@@ -4576,6 +4665,7 @@
       const dc = App.state.documentsCenter;
       dc.filteredCandidates = [...dc.candidates];
       dc.selectedIds.clear();
+      Views._docFilteredCandidates = dc.filteredCandidates;
 
       // Re-apply active sort after clearing filters
       if (dc.sort && dc.sort.column) {
@@ -4712,6 +4802,19 @@
           } else {
             Views._dcLoad();
           }
+        }
+
+        if (App.state.documents) {
+          const existingDoc = App.state.documents.find(d => 
+            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+            (d.DocType || '').toLowerCase() === docType.toLowerCase()
+          );
+          if (existingDoc) {
+            existingDoc.ExpiryDate = expiry;
+          } else {
+            App.state.documents.push({ CandidateID: candidateId, DocType: docType, ExpiryDate: expiry });
+          }
+          if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
         }
       } catch (err) {
         Toast.error(err.message);
@@ -4889,7 +4992,7 @@
 
     _dcUpdateDownloadBtn() {
       const dc = App.state.documentsCenter;
-      const btn = document.getElementById('dc-download-btn');
+      const btn = document.getElementById('btn-download-zip') || document.getElementById('dc-download-btn');
       if (!btn) return;
       const hasSelection = dc.selectedIds.size > 0;
       const hasDocTypes = document.querySelectorAll('.dc-doctype-check:checked').length > 0;
@@ -5318,6 +5421,19 @@
             Views._dcLoad();
           }
         }
+
+        if (App.state.documents) {
+          const existingDoc = App.state.documents.find(d => 
+            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+            (d.DocType || '').toLowerCase() === docType.toLowerCase()
+          );
+          if (existingDoc) {
+            existingDoc.ExpiryDate = expiry;
+          } else {
+            App.state.documents.push({ CandidateID: candidateId, DocType: docType, ExpiryDate: expiry });
+          }
+          if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
+        }
         
         btn.innerHTML = 'Saved ✓';
         btn.style.backgroundColor = 'var(--success)';
@@ -5333,6 +5449,121 @@
         Toast.error(err.message);
         btn.disabled = false;
         btn.innerHTML = 'Save Date';
+      }
+    },
+
+    _dcUpdateExpiryKpis() {
+      const _now = new Date();
+      let expPassport = 0, expMedExam = 0, expMedAnalysis = 0, expVisa = 0;
+
+      (App.state.documents || []).forEach(doc => {
+        if (doc.ExpiryDate || doc.expiryDate) {
+          const expDate = new Date(doc.ExpiryDate || doc.expiryDate);
+          if (expDate < _now) {
+            const dType = (doc.DocType || doc.docType || '').toLowerCase();
+            if (dType.includes('passport')) expPassport++;
+            if (dType.includes('medical examination')) expMedExam++;
+            if (dType.includes('medical analysis')) expMedAnalysis++;
+            if (dType.includes('visa')) expVisa++;
+          }
+        }
+      });
+
+      const pEl = document.getElementById('dc-exp-passports');
+      const meEl = document.getElementById('dc-exp-med-exams');
+      const maEl = document.getElementById('dc-exp-med-analysis');
+      const vEl = document.getElementById('dc-exp-visas');
+      if (pEl) pEl.textContent = expPassport;
+      if (meEl) meEl.textContent = expMedExam;
+      if (maEl) maEl.textContent = expMedAnalysis;
+      if (vEl) vEl.textContent = expVisa;
+    },
+
+    _exportDocExpiryCSV() {
+      try {
+        const candidatesToExport = Views._docFilteredCandidates || 
+          App.state.documentsCenter?.filteredCandidates || 
+          App.state.candidates || [];
+        if (candidatesToExport.length === 0) {
+          Toast.warning('No candidates available to export.');
+          return;
+        }
+
+        Toast.info('Generating Expiry Report...');
+
+        // Helper to calculate days remaining
+        const getDaysRemaining = (candidateId, docTypeSubstring) => {
+          let doc = (App.state.documents || []).find(d => 
+            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+            (d.DocType || d.docType || '').toLowerCase().includes(docTypeSubstring.toLowerCase())
+          );
+
+          let expiryDate = doc?.ExpiryDate || doc?.expiryDate;
+          if (!expiryDate && App.state.documentsCenter?.candidates) {
+            const dcCand = App.state.documentsCenter.candidates.find(c => (c.candidateId === candidateId || c.CandidateID === candidateId));
+            if (dcCand && dcCand.docDetails) {
+              const key = Object.keys(dcCand.docDetails).find(k => k.toLowerCase().includes(docTypeSubstring.toLowerCase()));
+              if (key) {
+                const d = dcCand.docDetails[key];
+                expiryDate = d.expiryDate || d.issueDate || d.documentDate;
+                if (d && !doc) doc = { DocType: key, ExpiryDate: expiryDate };
+              }
+            }
+          }
+          
+          if (!doc && !expiryDate) return 'Missing';
+          if (!expiryDate) return 'No Expiry Date';
+          
+          const diffTime = new Date(expiryDate) - new Date();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          return diffDays; 
+        };
+
+        // CSV Header
+        const headers = [
+          'HR Code', 
+          'Full Name', 
+          'Position', 
+          'Passport (Days Left)', 
+          'Visa (Days Left)', 
+          'Medical Exam (Days Left)', 
+          'Medical Analysis (Days Left)'
+        ];
+        const csvRows = [headers.join(',')];
+
+        // Process Candidates
+        candidatesToExport.forEach(c => {
+          const candId = c.CandidateID || c.candidateId || '';
+          const hrCode = c.HR_Code || c.hrCode || '';
+          const fullName = c.FullName || c.fullName || '';
+          const position = c.Position || c.position || '';
+
+          const row = [
+            `"${String(hrCode).replace(/"/g, '""')}"`,
+            `"${String(fullName).replace(/"/g, '""')}"`,
+            `"${String(position).replace(/"/g, '""')}"`,
+            `"${getDaysRemaining(candId, 'passport')}"`,
+            `"${getDaysRemaining(candId, 'visa')}"`,
+            `"${getDaysRemaining(candId, 'medical examination')}"`,
+            `"${getDaysRemaining(candId, 'medical analysis')}"`
+          ];
+          csvRows.push(row.join(','));
+        });
+
+        // Trigger Download
+        const csvString = csvRows.join('\n');
+        const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = `Document_Expiry_Report_${new Date().toISOString().split('T')[0]}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        Toast.success('Export completed successfully.');
+      } catch (err) {
+        console.error(err);
+        Toast.error('Failed to generate export.');
       }
     },
 
