@@ -223,7 +223,8 @@ function api_getAllCandidates() {
 
 /**
  * Creates a new candidate record in the Candidates sheet.
- * @param {object} candidateData - { fullName, position, department, email, phone, nationality, salary, coordinatorEmail, hrCode, recruitmentType }
+ * Schema-safe dynamic column mapping: dynamically maps fields to matching header positions.
+ * @param {object} candidateData - { fullName, position, department, email, phone, nationality, salary, coordinatorEmail, hrCode, recruitmentType, localServerPath, batchNumber }
  */
 function api_createCandidate(candidateData) {
   const auth = requireRole_(['Admin', 'HR']);
@@ -243,26 +244,58 @@ function api_createCandidate(candidateData) {
       ? candidateData.recruitmentType
       : '';
 
-    sheet.appendRow([
-      id,                                   // CandidateID
-      candidateData.fullName,               // FullName
-      candidateData.position,               // Position
-      candidateData.department,             // Department
-      candidateData.email,                  // Email
-      candidateData.phone,                  // Phone
-      candidateData.nationality,            // Nationality
-      candidateData.salary,                 // OfferSalary
-      candidateData.coordinatorEmail,       // AssignedCoordinatorEmail
-      'Documents Requested',                // CurrentStatus
-      now,                                  // CreatedAt
-      now,                                  // UpdatedAt
-      '',                                   // DriveFolderID (filled by DriveManager)
-      '',                                   // Notes
-      localServerPath,                      // LocalServerPath (optional)
-      hrCode,                               // HR_Code (optional)
-      recruitmentType,                      // Recruitment_Type (optional)
-      (candidateData.batchNumber || '').toString().trim() // Batch_Number (optional, last column)
-    ]);
+    const headers = sheet.getDataRange().getValues()[0] || [];
+    const newRow = new Array(headers.length).fill('');
+
+    const setField = (colName, value) => {
+      const idx = headers.indexOf(colName);
+      if (idx !== -1) {
+        newRow[idx] = value !== undefined && value !== null ? value : '';
+      }
+    };
+
+    setField('CandidateID', id);
+    setField('FullName', candidateData.fullName || '');
+    setField('Position', candidateData.position || '');
+    setField('Department', candidateData.department || '');
+    setField('Email', candidateData.email || '');
+    setField('Phone', candidateData.phone || '');
+    setField('Nationality', candidateData.nationality || '');
+
+    // OfferSalary with fallback to Salary
+    const salaryVal = candidateData.salary !== undefined ? candidateData.salary : (candidateData.offerSalary || '');
+    if (headers.indexOf('OfferSalary') !== -1) {
+      setField('OfferSalary', salaryVal);
+    } else {
+      setField('Salary', salaryVal);
+    }
+
+    // AssignedCoordinatorEmail with fallback to CoordinatorEmail
+    const coordVal = candidateData.coordinatorEmail !== undefined ? candidateData.coordinatorEmail : (candidateData.assignedCoordinatorEmail || '');
+    if (headers.indexOf('AssignedCoordinatorEmail') !== -1) {
+      setField('AssignedCoordinatorEmail', coordVal);
+    } else {
+      setField('CoordinatorEmail', coordVal);
+    }
+
+    setField('CurrentStatus', 'Documents Requested');
+    setField('CreatedAt', now);
+    setField('UpdatedAt', now);
+    setField('DriveFolderID', '');
+    setField('Notes', '');
+    setField('LocalServerPath', localServerPath);
+    setField('HR_Code', hrCode);
+    setField('Recruitment_Type', recruitmentType);
+
+    // Batch_Number with fallback to BatchNumber
+    const batchVal = (candidateData.batchNumber || candidateData.batch_number || '').toString().trim();
+    if (headers.indexOf('Batch_Number') !== -1) {
+      setField('Batch_Number', batchVal);
+    } else {
+      setField('BatchNumber', batchVal);
+    }
+
+    sheet.appendRow(newRow);
 
     api_writeLog_(id, 'SYSTEM', 'Candidate Created: ' + candidateData.fullName);
     // [CACHE POLICY] Write operation — invalidate dashboard cache immediately
@@ -275,9 +308,9 @@ function api_createCandidate(candidateData) {
 }
 
 /**
- * Updates a candidate's profile details.
+ * Updates a candidate's profile details using batch row update (O(1) write).
  * @param {string} candidateId
- * @param {object} updates - { phone, notes, localServerPath, hrCode, recruitmentType }
+ * @param {object} updates - { phone, notes, localServerPath, hrCode, recruitmentType, batchNumber }
  */
 function api_updateCandidateDetails(candidateId, updates) {
   const auth = requireRole_(['Admin', 'HR', 'Coordinator']);
@@ -287,8 +320,10 @@ function api_updateCandidateDetails(candidateId, updates) {
     const data = sheet.getDataRange().getValues();
     const headers = data[0];
     const idCol = headers.indexOf('CandidateID');
+    if (idCol === -1) return { success: false, error: 'CandidateID column not found.' };
+
     const phoneCol = headers.indexOf('Phone');
-    const notesCol = headers.indexOf('Notes'); // Column N
+    const notesCol = headers.indexOf('Notes');
     const localPathCol = headers.indexOf('LocalServerPath');
     const hrCodeCol = headers.indexOf('HR_Code');
     const recruitmentTypeCol = headers.indexOf('Recruitment_Type');
@@ -297,56 +332,72 @@ function api_updateCandidateDetails(candidateId, updates) {
 
     const ALLOWED_RECRUITMENT_TYPES = new Set(['Internal', 'External']);
 
+    let rowIndex = -1;
     for (let i = 1; i < data.length; i++) {
-      if (data[i][idCol] === candidateId) {
-        if (updates.phone !== undefined && phoneCol >= 0) {
-          sheet.getRange(i + 1, phoneCol + 1).setValue(updates.phone);
-        }
-        if (updates.notes !== undefined) {
-          if (notesCol === -1) {
-            // Notes column missing — skip silently and log; do not mutate schema at runtime
-            Logger.log('WARNING: Notes column not found in tbl_Candidates. Add it manually.');
-          } else {
-            sheet.getRange(i + 1, notesCol + 1).setValue(updates.notes);
-          }
-        }
-        if (updates.localServerPath !== undefined) {
-          if (localPathCol === -1) {
-            // LocalServerPath column missing — skip silently and log; do not mutate schema at runtime
-            Logger.log('WARNING: LocalServerPath column not found in tbl_Candidates. Add it manually.');
-          } else {
-            // Enforce the 500-char max defensively; empty string is always allowed.
-            const path = (updates.localServerPath || '').toString().slice(0, 500);
-            sheet.getRange(i + 1, localPathCol + 1).setValue(path);
-          }
-        }
-        if (updates.hrCode !== undefined) {
-          if (hrCodeCol === -1) {
-            Logger.log('WARNING: HR_Code column not found in tbl_Candidates. Add it manually.');
-          } else {
-            sheet.getRange(i + 1, hrCodeCol + 1).setValue((updates.hrCode || '').toString().trim());
-          }
-        }
-        if (updates.recruitmentType !== undefined) {
-          if (recruitmentTypeCol === -1) {
-            Logger.log('WARNING: Recruitment_Type column not found in tbl_Candidates. Add it manually.');
-          } else if (updates.recruitmentType === '' || ALLOWED_RECRUITMENT_TYPES.has(updates.recruitmentType)) {
-            sheet.getRange(i + 1, recruitmentTypeCol + 1).setValue(updates.recruitmentType);
-          } else {
-            Logger.log('WARNING: Invalid Recruitment_Type value: ' + updates.recruitmentType + '. Allowed: Internal, External.');
-          }
-        }
-        if (updates.batchNumber !== undefined && batchCol >= 0) {
-          sheet.getRange(i + 1, batchCol + 1).setValue((updates.batchNumber || '').toString().trim());
-        }
-        sheet.getRange(i + 1, updatedCol + 1).setValue(new Date().toISOString());
-        api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Profile Updated');
-        // [CACHE POLICY] Write operation — invalidate dashboard cache immediately
-        CacheService.getScriptCache().remove('dashboard_data');
-        return { success: true };
+      if (String(data[i][idCol]) === String(candidateId)) {
+        rowIndex = i + 1;
+        break;
       }
     }
-    return { success: false, error: 'Candidate not found.' };
+
+    if (rowIndex === -1) {
+      return { success: false, error: 'Candidate not found.' };
+    }
+
+    // Fetch the candidate's row as an array and apply all modifications in memory
+    const updatedRow = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
+
+    if (updates.phone !== undefined && phoneCol !== -1) {
+      updatedRow[phoneCol] = updates.phone;
+    }
+    if (updates.notes !== undefined) {
+      if (notesCol === -1) {
+        // Notes column missing — skip silently and log; do not mutate schema at runtime
+        Logger.log('WARNING: Notes column not found in tbl_Candidates. Add it manually.');
+      } else {
+        updatedRow[notesCol] = updates.notes;
+      }
+    }
+    if (updates.localServerPath !== undefined) {
+      if (localPathCol === -1) {
+        // LocalServerPath column missing — skip silently and log; do not mutate schema at runtime
+        Logger.log('WARNING: LocalServerPath column not found in tbl_Candidates. Add it manually.');
+      } else {
+        // Enforce the 500-char max defensively; empty string is always allowed.
+        const path = (updates.localServerPath || '').toString().slice(0, 500);
+        updatedRow[localPathCol] = path;
+      }
+    }
+    if (updates.hrCode !== undefined) {
+      if (hrCodeCol === -1) {
+        Logger.log('WARNING: HR_Code column not found in tbl_Candidates. Add it manually.');
+      } else {
+        updatedRow[hrCodeCol] = (updates.hrCode || '').toString().trim();
+      }
+    }
+    if (updates.recruitmentType !== undefined) {
+      if (recruitmentTypeCol === -1) {
+        Logger.log('WARNING: Recruitment_Type column not found in tbl_Candidates. Add it manually.');
+      } else if (updates.recruitmentType === '' || ALLOWED_RECRUITMENT_TYPES.has(updates.recruitmentType)) {
+        updatedRow[recruitmentTypeCol] = updates.recruitmentType;
+      } else {
+        Logger.log('WARNING: Invalid Recruitment_Type value: ' + updates.recruitmentType + '. Allowed: Internal, External.');
+      }
+    }
+    if (updates.batchNumber !== undefined && batchCol !== -1) {
+      updatedRow[batchCol] = (updates.batchNumber || '').toString().trim();
+    }
+    if (updatedCol !== -1) {
+      updatedRow[updatedCol] = new Date().toISOString();
+    }
+
+    // Commit via a single setValues() call
+    sheet.getRange(rowIndex, 1, 1, headers.length).setValues([updatedRow]);
+
+    api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Profile Updated');
+    // [CACHE POLICY] Write operation — invalidate dashboard cache immediately
+    CacheService.getScriptCache().remove('dashboard_data');
+    return { success: true };
   } catch (e) {
     Logger.log(e);
     return { success: false, error: e.message };
@@ -354,12 +405,13 @@ function api_updateCandidateDetails(candidateId, updates) {
 }
 
 /**
- * Permanently deletes a candidate and ALL associated data:
+ * Permanently deletes a candidate and ALL associated data via batch in-memory filtering:
  *   - Row in tbl_Candidates
  *   - All rows in tbl_Documents  where CandidateID matches
  *   - All rows in tbl_Events     where CandidateID matches
  *   - All rows in tbl_SystemLogs where CandidateID matches
  *   - Candidate's Google Drive folder (moved to Trash)
+ * Reduces network calls from O(N) deleteRow to O(1) read and O(1) write per sheet.
  * Restricted to Admin and HR roles only.
  */
 function api_deleteCandidate(candidateId) {
@@ -371,47 +423,48 @@ function api_deleteCandidate(candidateId) {
     const ss = getSpreadsheet_();
 
     let driveFolderId = '';
-    (function () {
-      const sheet   = ss.getSheetByName(SHEET_CANDIDATES);
-      const data    = sheet.getDataRange().getValues();
-      const idCol   = data[0].indexOf('CandidateID');
-      const fldCol  = data[0].indexOf('DriveFolderID');
-      // Iterate bottom-up so row indices stay valid after deletion
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (String(data[i][idCol]) === String(candidateId)) {
-          driveFolderId = data[i][fldCol] || '';
-          sheet.deleteRow(i + 1);
-          break;
+
+    // 1. tbl_Candidates: extract DriveFolderID and filter in-memory
+    const candSheet = ss.getSheetByName(SHEET_CANDIDATES);
+    if (candSheet) {
+      const data = candSheet.getDataRange().getValues();
+      if (data && data.length > 0) {
+        const idCol = data[0].indexOf('CandidateID');
+        const fldCol = data[0].indexOf('DriveFolderID');
+        if (idCol !== -1) {
+          for (let i = 1; i < data.length; i++) {
+            if (String(data[i][idCol]) === String(candidateId)) {
+              if (fldCol !== -1) {
+                driveFolderId = data[i][fldCol] || '';
+              }
+              break;
+            }
+          }
+          const newData = data.filter((row, idx) => idx === 0 || String(row[idCol]) !== String(candidateId));
+          if (newData.length < data.length && newData.length > 0) {
+            candSheet.clearContents();
+            candSheet.getRange(1, 1, newData.length, newData[0].length).setValues(newData);
+          }
         }
       }
-    })();
+    }
 
-    (function () {
-      const sheet  = ss.getSheetByName(SHEET_DOCUMENTS);
-      const data   = sheet.getDataRange().getValues();
-      const idCol  = data[0].indexOf('CandidateID');
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (String(data[i][idCol]) === String(candidateId)) sheet.deleteRow(i + 1);
-      }
-    })();
+    // 2. Cascade filter across tbl_Documents, tbl_Events, tbl_SystemLogs
+    const cascadeSheets = [SHEET_DOCUMENTS, SHEET_EVENTS, SHEET_LOGS];
+    cascadeSheets.forEach(sheetName => {
+      const sheet = ss.getSheetByName(sheetName);
+      if (!sheet) return;
+      const data = sheet.getDataRange().getValues();
+      if (!data || data.length === 0) return;
+      const idCol = data[0].indexOf('CandidateID');
+      if (idCol === -1) return;
 
-    (function () {
-      const sheet  = ss.getSheetByName(SHEET_EVENTS);
-      const data   = sheet.getDataRange().getValues();
-      const idCol  = data[0].indexOf('CandidateID');
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (String(data[i][idCol]) === String(candidateId)) sheet.deleteRow(i + 1);
+      const newData = data.filter((row, idx) => idx === 0 || String(row[idCol]) !== String(candidateId));
+      if (newData.length < data.length && newData.length > 0) {
+        sheet.clearContents();
+        sheet.getRange(1, 1, newData.length, newData[0].length).setValues(newData);
       }
-    })();
-
-    (function () {
-      const sheet  = ss.getSheetByName(SHEET_LOGS);
-      const data   = sheet.getDataRange().getValues();
-      const idCol  = data[0].indexOf('CandidateID');
-      for (let i = data.length - 1; i >= 1; i--) {
-        if (String(data[i][idCol]) === String(candidateId)) sheet.deleteRow(i + 1);
-      }
-    })();
+    });
 
     if (driveFolderId) {
       try {
