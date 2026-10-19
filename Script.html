@@ -3193,17 +3193,50 @@
     async _submitStatus(candidateId) {
       const newStatus = document.getElementById('new-status')?.value;
       if (!newStatus) return;
+
       Modal.close();
+
       try {
         const res = await GAS.call('api_updateCandidateStatus', candidateId, newStatus);
         if (!res.success) throw new Error(res.error);
-        // Update local state
-        const cand = App.state.candidates.find(c => c.CandidateID === candidateId);
-        if (cand) cand.CurrentStatus = newStatus;
-        if (App.state.selectedCandidate?.CandidateID === candidateId)
+
+        // 1. Update global candidate array in memory
+        const candIndex = (App.state.candidates || []).findIndex(c => c.CandidateID === candidateId);
+        if (candIndex > -1) {
+          App.state.candidates[candIndex].CurrentStatus = newStatus;
+        }
+        if (App.state.selectedCandidate?.CandidateID === candidateId) {
           App.state.selectedCandidate.CurrentStatus = newStatus;
-        Toast.success('Status updated to: ' + newStatus);
-        Router.navigate('candidate-detail');
+        }
+
+        // 2. Show Success Toast
+        Toast.success(`Status updated to: ${newStatus}`);
+
+        // 3. Re-render current view dynamically without navigation
+        if (document.getElementById('dashboard-table')) {
+          // On Dashboard: Re-evaluate single-pass filtering & re-render table
+          Views._applyDashboardAllFilters();
+
+          // 4. Apply temporary subtle green flash highlight to updated row
+          const highlightRow = () => {
+            const rows = document.querySelectorAll('#dashboard-table tbody tr');
+            rows.forEach(tr => {
+              if (tr.innerHTML.includes(candidateId) || (candIndex > -1 && tr.innerText.includes(App.state.candidates[candIndex]?.FullName))) {
+                tr.style.transition = 'background-color 0.5s ease';
+                tr.style.backgroundColor = '#dcfce7'; // subtle emerald highlight
+                setTimeout(() => { tr.style.backgroundColor = ''; }, 1500);
+              }
+            });
+          };
+          setTimeout(highlightRow, 100);
+          setTimeout(highlightRow, 250);
+        } else if (document.getElementById('candidates-table')) {
+          // Fallback if user was on Candidates page
+          Views._filterCandidates();
+        } else if (App.state.selectedCandidate?.CandidateID === candidateId) {
+          // Fallback if user was on Candidate Detail page
+          Router.navigate('candidate-detail');
+        }
       } catch (err) {
         Toast.error('Update failed: ' + err.message);
       }
