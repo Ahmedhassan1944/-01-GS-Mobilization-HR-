@@ -26,16 +26,38 @@ function authorizeCalendarScope() {
  * Normalizes a sheet EventDate value (which may be a real Date object
  * if Sheets auto-converted it, or a plain string) into a consistent
  * 'YYYY-MM-DD' string.
+ * Defensive Date Parsing: guards against Sheets formula errors (#REF!, #N/A)
+ * or invalid strings evaluating to NaN.
  */
 function normalizeEventDateString_(value) {
   if (!value) return '';
   if (value instanceof Date) {
+    if (isNaN(value.getTime())) return '';
     const y = value.getFullYear();
     const m = String(value.getMonth() + 1).padStart(2, '0');
     const d = String(value.getDate()).padStart(2, '0');
     return `${y}-${m}-${d}`;
   }
-  return String(value);
+  const strVal = String(value).trim();
+  // Filter out formula errors or string NaNs
+  if (strVal.startsWith('#') || strVal.toLowerCase() === 'nan' || strVal === 'Invalid Date') {
+    return '';
+  }
+
+  // If already in YYYY-MM-DD format, validate via Date
+  if (/^\d{4}-\d{2}-\d{2}$/.test(strVal)) {
+    const parsed = new Date(strVal);
+    if (isNaN(parsed.getTime())) return '';
+    return strVal;
+  }
+
+  // Safety check: wrap new Date(val) in isNaN check
+  const dVal = new Date(value);
+  if (isNaN(dVal.getTime())) return '';
+  const y = dVal.getFullYear();
+  const m = String(dVal.getMonth() + 1).padStart(2, '0');
+  const d = String(dVal.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 }
 
 /**

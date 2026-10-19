@@ -476,6 +476,24 @@
 
   const escHtml = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
+  /**
+   * Global debounce helper utility (Fix Vulnerability 4.2).
+   * Delays function execution until after wait milliseconds have elapsed
+   * since the last time the debounced function was invoked.
+   * @param {Function} fn - The function to debounce
+   * @param {number} wait - Debounce delay in milliseconds (default: 300ms)
+   * @returns {Function}
+   */
+  function debounce(fn, wait = 300) {
+    let timeout;
+    return function (...args) {
+      const context = this;
+      clearTimeout(timeout);
+      timeout = setTimeout(() => fn.apply(context, args), wait);
+    };
+  }
+  window.debounce = debounce;
+
   // ─────────────────────────────────────────────
   // DOCUMENT COMPLETENESS — SHARED CONSTANTS
   // Single source of truth, reused by both the
@@ -792,7 +810,7 @@
         <div class="search-input" style="flex: 1; min-width: 200px;">
           <span class="search-input__icon" aria-hidden="true">🔍</span>
           <input type="search" id="dash-tb-search" placeholder="Name, Position, HR Code, ID..."
-                 aria-label="Search candidates" oninput="Views._applyDashboardAllFilters()" autocomplete="off">
+                 aria-label="Search candidates" autocomplete="off">
         </div>
         <select id="dash-tb-pos" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
           <option value="">💼 All Positions</option>
@@ -1029,6 +1047,12 @@
       if (typeof _cppShortcutRegistered !== 'undefined' && !_cppShortcutRegistered) {
         CandidatePreviewPanel.initShortcut();
         _cppShortcutRegistered = true;
+      }
+
+      // Attach debounced search listener (300ms debounce to prevent DOM freezing on large datasets)
+      const dashSearchEl = document.getElementById('dash-tb-search');
+      if (dashSearchEl) {
+        dashSearchEl.addEventListener('input', debounce(() => Views._applyDashboardAllFilters(), 300));
       }
 
       // Track selected card filters
@@ -1824,7 +1848,7 @@
         <div class="search-input" style="flex: 1; min-width: 200px;">
           <span class="search-input__icon" aria-hidden="true">🔍</span>
           <input type="search" id="cand-tb-search" placeholder="Name, Position, HR Code, ID..."
-                 aria-label="Search candidates" oninput="Views._applyCandidateFilters()" autocomplete="off">
+                 aria-label="Search candidates" autocomplete="off">
         </div>
         <select id="cand-tb-pos" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
           <option value="">💼 All Positions</option>
@@ -1978,6 +2002,12 @@
         </div>
         <div class="table-footer" id="table-footer"></div>
       </div>`;
+
+      // Attach debounced search listener (300ms debounce to prevent DOM freezing on large datasets)
+      const candSearchEl = document.getElementById('cand-tb-search');
+      if (candSearchEl) {
+        candSearchEl.addEventListener('input', debounce(() => Views._applyCandidateFilters(), 300));
+      }
 
       Views._loadCandidates();
     },
@@ -4303,9 +4333,11 @@
       let expPassport = 0, expMedExam = 0, expMedAnalysis = 0, expVisa = 0;
 
       (App.state.documents || []).forEach(doc => {
-        if (doc.ExpiryDate || doc.expiryDate) {
-          const expDate = new Date(doc.ExpiryDate || doc.expiryDate);
-          if (expDate < _now) {
+        const val = doc.ExpiryDate || doc.expiryDate;
+        if (val) {
+          const expDate = new Date(val);
+          // Defensive Date Parsing: wrap in safety check to prevent formula errors evaluating to NaN
+          if (!isNaN(expDate.getTime()) && expDate < _now) {
             const dType = (doc.DocType || doc.docType || '').toLowerCase();
             if (dType.includes('passport')) expPassport++;
             if (dType.includes('medical examination')) expMedExam++;
@@ -5457,9 +5489,11 @@
       let expPassport = 0, expMedExam = 0, expMedAnalysis = 0, expVisa = 0;
 
       (App.state.documents || []).forEach(doc => {
-        if (doc.ExpiryDate || doc.expiryDate) {
-          const expDate = new Date(doc.ExpiryDate || doc.expiryDate);
-          if (expDate < _now) {
+        const val = doc.ExpiryDate || doc.expiryDate;
+        if (val) {
+          const expDate = new Date(val);
+          // Defensive Date Parsing: wrap in safety check to prevent formula errors evaluating to NaN
+          if (!isNaN(expDate.getTime()) && expDate < _now) {
             const dType = (doc.DocType || doc.docType || '').toLowerCase();
             if (dType.includes('passport')) expPassport++;
             if (dType.includes('medical examination')) expMedExam++;

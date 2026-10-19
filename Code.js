@@ -84,7 +84,14 @@ function api_getDashboardData() {
     const _cache      = CacheService.getScriptCache();
     const _cachedJson = _cache.get('dashboard_data');
     if (_cachedJson) {
-      return JSON.parse(_cachedJson);
+      try {
+        const cachedPayload = JSON.parse(_cachedJson);
+        if (cachedPayload && cachedPayload.success && cachedPayload.data) {
+          return cachedPayload;
+        }
+      } catch (cacheParseErr) {
+        Logger.log('Corrupted dashboard cache, recomputing: ' + cacheParseErr.message);
+      }
     }
     // ───────────────────────────────────────────────────────────────────
 
@@ -212,7 +219,10 @@ function api_getDashboardData() {
       const dateStr = normalizeEventDateString_(evt.EventDate);
       if (!dateStr) return;
       const [y, m, d] = dateStr.split('-').map(Number);
+      if (isNaN(y) || isNaN(m) || isNaN(d)) return;
       const evDate = new Date(y, m - 1, d);
+      // Defensive Date Parsing: wrap in safety check to avoid formula errors (#REF!, #N/A) crashing math
+      if (isNaN(evDate.getTime())) return;
       
       if (evDate.getTime() === todayDate.getTime()) eventsToday++;
       if (evDate.getTime() === tomorrowDate.getTime()) eventsTomorrow++;
@@ -221,62 +231,105 @@ function api_getDashboardData() {
       if (evt.Priority === 'High' && evDate >= todayDate) eventsHighPriority++;
     });
 
+    // ── Document Expiry KPIs with Defensive Date Parsing ────────────
+    const _now = new Date();
+    let expPassport = 0;
+    let expMedExam = 0;
+    let expMedAnalysis = 0;
+    let expVisa = 0;
+
+    (allDocs || []).forEach(doc => {
+      const val = doc.ExpiryDate || doc.expiryDate;
+      if (!val) return;
+      const expDate = new Date(val);
+      // Defensive Date Parsing: wrap in safety check to prevent formula errors evaluating to NaN
+      if (isNaN(expDate.getTime())) return;
+
+      if (expDate < _now) {
+        const dType = String(doc.DocType || doc.docType || '').toLowerCase();
+        if (dType.includes('passport')) expPassport++;
+        if (dType.includes('medical examination')) expMedExam++;
+        if (dType.includes('medical analysis')) expMedAnalysis++;
+        if (dType.includes('visa')) expVisa++;
+      }
+    });
+
+    const aggregatedMetrics = {
+      // Status-based
+      activeCount,
+      missingDocs,
+      visaPending,
+      visaCompleted,
+      mobilized,
+      pendingMedical,
+      bookedMedical,
+      docsUnderPreparing,
+      taIssues,
+      renewalPassport,
+      notAvailable,
+      creatingWhatsapp,
+      unfitPcr,
+      unfitInjury,
+      rejected,
+      statusCounts,
+      batchCounts,
+      hasCount,
+      missingCount,
+      // Document HAS counts
+      hasPassport:      hasCount['Passport'] || 0,
+      hasPhoto:         hasCount['Photo'] || 0,
+      hasAcademicCert:  hasCount['Academic Certificate'] || 0,
+      hasMedicalExam:   hasCount['Medical Examination'] || 0,
+      hasMedicalAnalysis: hasCount['Medical Analysis'] || 0,
+      hasVisa:          hasCount['Visa'] || 0,
+      hasCV:            hasCount['CV'] || 0,
+      // Document MISSING counts
+      missingPassport:       missingCount['Passport'] || 0,
+      missingPhoto:          missingCount['Photo'] || 0,
+      missingAcademicCert:   missingCount['Academic Certificate'] || 0,
+      missingMedicalExam:    missingCount['Medical Examination'] || 0,
+      missingMedicalAnalysis:missingCount['Medical Analysis'] || 0,
+      missingVisa:           missingCount['Visa'] || 0,
+      missingCV:             missingCount['CV'] || 0,
+      // Calendar-based
+      eventsToday,
+      eventsTomorrow,
+      eventsThisWeek,
+      eventsOverdue,
+      eventsHighPriority,
+      // Expiry KPIs
+      expPassport,
+      expMedExam,
+      expMedAnalysis,
+      expVisa,
+      msg: 'Live data successfully retrieved from Google Sheets.'
+    };
+
     const _result = {
       success: true,
       settings: settings,
-      data: {
-        // Status-based
-        activeCount,
-        missingDocs,
-        visaPending,
-        visaCompleted,
-        mobilized,
-        pendingMedical,
-        bookedMedical,
-        docsUnderPreparing,
-        taIssues,
-        renewalPassport,
-        notAvailable,
-        creatingWhatsapp,
-        unfitPcr,
-        unfitInjury,
-        rejected,
-        statusCounts,
-        batchCounts,
-        hasCount,
-        missingCount,
-        // Document HAS counts
-        hasPassport:      hasCount['Passport'] || 0,
-        hasPhoto:         hasCount['Photo'] || 0,
-        hasAcademicCert:  hasCount['Academic Certificate'] || 0,
-        hasMedicalExam:   hasCount['Medical Examination'] || 0,
-        hasMedicalAnalysis: hasCount['Medical Analysis'] || 0,
-        hasVisa:          hasCount['Visa'] || 0,
-        hasCV:            hasCount['CV'] || 0,
-        // Document MISSING counts
-        missingPassport:       missingCount['Passport'] || 0,
-        missingPhoto:          missingCount['Photo'] || 0,
-        missingAcademicCert:   missingCount['Academic Certificate'] || 0,
-        missingMedicalExam:    missingCount['Medical Examination'] || 0,
-        missingMedicalAnalysis:missingCount['Medical Analysis'] || 0,
-        missingVisa:           missingCount['Visa'] || 0,
-        missingCV:             missingCount['CV'] || 0,
-        // Calendar-based
-        eventsToday,
-        eventsTomorrow,
-        eventsThisWeek,
-        eventsOverdue,
-        eventsHighPriority,
-        msg: 'Live data successfully retrieved from Google Sheets.'
-      }
+      data: aggregatedMetrics
     };
 
-    // ── Cache write ───────────────────────────────────────────────────
-    // TTL = 60 seconds (fallback only). The cache is primarily invalidated
-    // by event-based removal in every write api_* function — not by TTL.
-    // If JSON.stringify exceeds 100KB, put() fails silently (try/catch).
-    try { _cache.put('dashboard_data', JSON.stringify(_result), 60); } catch (_) {}
-    // ───────────────────────────────────────────────────────────────────
+    // ── Cache write: Lightweight Payload Only (Fix Vulnerability 3.1) ───
+    // Prevent 100KB CacheService overflow by caching ONLY the aggregated metrics
+    // and settings, NEVER raw massive arrays (candidates, documents, events).
+    const _cachePayload = {
+      success: true,
+      settings: settings,
+      data: aggregatedMetrics
+    };
+
+    try {
+      const payloadStr = JSON.stringify(_cachePayload);
+      if (payloadStr.length < 100000) {
+        _cache.put('dashboard_data', payloadStr, 60);
+      } else {
+        Logger.log('WARNING: dashboard_data cache exceeds 100KB (' + payloadStr.length + ' bytes). Skipping cache.');
+      }
+    } catch (cacheErr) {
+      Logger.log('Cache put failed: ' + cacheErr.message);
+    }
 
     return _result;
   } catch (e) {
