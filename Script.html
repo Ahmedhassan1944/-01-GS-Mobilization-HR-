@@ -4319,14 +4319,11 @@
       };
 
       // Reset UI controls to default "All" values before rendering
-      const statusEl = document.getElementById('dc-filter-status');
-      const deptEl = document.getElementById('dc-filter-dept');
-      const natEl = document.getElementById('dc-filter-nat');
-      const searchEl = document.getElementById('dc-search');
-      if (statusEl) statusEl.value = '';
-      if (deptEl) deptEl.value = '';
-      if (natEl) natEl.value = '';
-      if (searchEl) searchEl.value = '';
+      ['dc-filter-status', 'dc-filter-dept', 'dc-filter-nat', 'dc-filter-batch', 'dc-search',
+       'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.value = '';
+      });
 
       // 1. Calculate Detailed Expiry Matrix (Excluding 'Closed' Candidates)
       const _now = new Date();
@@ -4503,6 +4500,56 @@
             </select>
           </div>
           <button class="btn btn--outline btn--sm" onclick="Views._dcClearFilters()">✕ Clear</button>
+        </div>
+
+        <div class="filters-row-secondary" style="display: flex; flex-wrap: wrap; gap: 15px; margin-top: 15px; padding: 15px var(--sp-3) var(--sp-3); border-top: 1px dashed var(--border, #cbd5e1);">
+          <div class="filter-group" style="flex: 1; min-width: 160px;">
+            <label style="font-size: 11px; color: var(--text-secondary, #64748b); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; display: block;">🛂 Passport Status</label>
+            <select class="form-control form-control--sm" id="dc-filter-passport" onchange="Views._dcApplyFilters()" style="width: 100%;">
+              <option value="">All Passports</option>
+              <option value="missing">Missing</option>
+              <option value="nodate">Date Not Set</option>
+              <option value="expired">Expired</option>
+              <option value="exp30">Expiring (&lt;= 30 Days)</option>
+              <option value="exp180">Expiring (&lt;= 6 Months)</option>
+            </select>
+          </div>
+
+          <div class="filter-group" style="flex: 1; min-width: 160px;">
+            <label style="font-size: 11px; color: var(--text-secondary, #64748b); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; display: block;">🩺 Medical Exam</label>
+            <select class="form-control form-control--sm" id="dc-filter-medexam" onchange="Views._dcApplyFilters()" style="width: 100%;">
+              <option value="">All Med. Exams</option>
+              <option value="missing">Missing</option>
+              <option value="nodate">Date Not Set</option>
+              <option value="expired">Expired</option>
+              <option value="exp30">Expiring (&lt;= 30 Days)</option>
+              <option value="exp180">Expiring (&lt;= 6 Months)</option>
+            </select>
+          </div>
+
+          <div class="filter-group" style="flex: 1; min-width: 160px;">
+            <label style="font-size: 11px; color: var(--text-secondary, #64748b); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; display: block;">🩸 Medical Analysis</label>
+            <select class="form-control form-control--sm" id="dc-filter-medanalysis" onchange="Views._dcApplyFilters()" style="width: 100%;">
+              <option value="">All Med. Analysis</option>
+              <option value="missing">Missing</option>
+              <option value="nodate">Date Not Set</option>
+              <option value="expired">Expired</option>
+              <option value="exp30">Expiring (&lt;= 30 Days)</option>
+              <option value="exp180">Expiring (&lt;= 6 Months)</option>
+            </select>
+          </div>
+
+          <div class="filter-group" style="flex: 1; min-width: 160px;">
+            <label style="font-size: 11px; color: var(--text-secondary, #64748b); font-weight: 600; text-transform: uppercase; margin-bottom: 4px; display: block;">✈️ Visa Status</label>
+            <select class="form-control form-control--sm" id="dc-filter-visa" onchange="Views._dcApplyFilters()" style="width: 100%;">
+              <option value="">All Visas</option>
+              <option value="missing">Missing</option>
+              <option value="nodate">Date Not Set</option>
+              <option value="expired">Expired</option>
+              <option value="exp30">Expiring (&lt;= 30 Days)</option>
+              <option value="exp180">Expiring (&lt;= 6 Months)</option>
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -4682,12 +4729,62 @@
       const batch = document.getElementById('dc-filter-batch')?.value || '';
       const search = (document.getElementById('dc-search')?.value || '').toLowerCase();
 
+      // Read Expiry State Filters
+      const fPass = document.getElementById('dc-filter-passport')?.value || '';
+      const fMedExam = document.getElementById('dc-filter-medexam')?.value || '';
+      const fMedAna = document.getElementById('dc-filter-medanalysis')?.value || '';
+      const fVisa = document.getElementById('dc-filter-visa')?.value || '';
+
+      const _now = new Date();
+
+      // Helper: Get candidate document expiration state
+      const getDocState = (candidateId, docTypeSubstring) => {
+        const docDetails = (dc.candidates.find(c => c.candidateId === candidateId) || {}).docDetails || {};
+        
+        // Find matching document entry in candidate details or global App.state.documents
+        let expDateStr = null;
+        let hasDoc = false;
+
+        const matchedKey = Object.keys(docDetails).find(k => k.toLowerCase().includes(docTypeSubstring));
+        if (matchedKey) {
+          hasDoc = true;
+          expDateStr = docDetails[matchedKey].expiryDate || docDetails[matchedKey].issueDate || docDetails[matchedKey].documentDate;
+        } else {
+          const globalDoc = (App.state.documents || []).find(d => 
+            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+            (d.DocType || '').toLowerCase().includes(docTypeSubstring)
+          );
+          if (globalDoc) {
+            hasDoc = true;
+            expDateStr = globalDoc.ExpiryDate || globalDoc.expiryDate;
+          }
+        }
+
+        if (!hasDoc) return 'missing';
+        if (!expDateStr) return 'nodate';
+
+        const diffDays = Math.ceil((new Date(expDateStr) - _now) / (1000 * 60 * 60 * 24));
+        if (diffDays < 0) return 'expired';
+        if (diffDays <= 30) return 'exp30';
+        if (diffDays <= 180) return 'exp180';
+        return 'valid';
+      };
+
       dc.filteredCandidates = dc.candidates.filter(c => {
+        // Primary filters
         if (status && c.status !== status) return false;
         if (dept && c.department !== dept) return false;
         if (nat && c.nationality !== nat) return false;
         if (batch && c.batchNumber !== batch) return false;
         if (search && !`${c.fullName} ${c.position || ''} ${c.hrCode} ${c.candidateId}`.toLowerCase().includes(search)) return false;
+
+        // Secondary document state filters
+        const cId = c.candidateId || c.CandidateID;
+        if (fPass && getDocState(cId, 'passport') !== fPass) return false;
+        if (fMedExam && getDocState(cId, 'medical examination') !== fMedExam) return false;
+        if (fMedAna && getDocState(cId, 'medical analysis') !== fMedAna) return false;
+        if (fVisa && getDocState(cId, 'visa') !== fVisa) return false;
+
         return true;
       });
 
@@ -4713,37 +4810,15 @@
     },
 
     _dcClearFilters() {
-      ['dc-filter-status', 'dc-filter-dept', 'dc-filter-nat', 'dc-filter-batch'].forEach(id => {
+      ['dc-filter-status', 'dc-filter-dept', 'dc-filter-nat', 'dc-filter-batch',
+       'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) {
-          el.value = '';
-          // Remove any accidentally selected option state
-          Array.from(el.options).forEach(o => o.selected = (o.value === ''));
-        }
+        if (el) el.value = '';
       });
       const s = document.getElementById('dc-search');
       if (s) s.value = '';
-      // Reset the filtered list to the full candidate list and re-render
-      const dc = App.state.documentsCenter;
-      dc.filteredCandidates = [...dc.candidates];
-      dc.selectedIds.clear();
-      Views._docFilteredCandidates = dc.filteredCandidates;
 
-      // Re-apply active sort after clearing filters
-      if (dc.sort && dc.sort.column) {
-        Views._dcSort(dc.sort.column);
-        return; // _dcSort already calls _dcRender
-      }
-
-      Views._dcRender();
-      Views._dcUpdateSelectionLabel();
-      Views._dcUpdateDownloadBtn();
-      Views._dcUpdateStats({
-        totalCandidates: dc.candidates.length,
-        totalSelected: 0,
-        totalAvailableDocs: dc.candidates.reduce((sum, c) => sum + (c.availableCount || 0), 0),
-        totalMissingDocs: dc.candidates.reduce((sum, c) => sum + (c.missingCount || 0), 0)
-      });
+      Views._dcApplyFilters();
     },
 
     _dcSort(column) {
@@ -4944,11 +5019,19 @@
         const n = document.getElementById('dc-filter-nat')?.value;
         const b = document.getElementById('dc-filter-batch')?.value;
         const q = document.getElementById('dc-search')?.value;
+        const fPass = document.getElementById('dc-filter-passport')?.value;
+        const fMedExam = document.getElementById('dc-filter-medexam')?.value;
+        const fMedAna = document.getElementById('dc-filter-medanalysis')?.value;
+        const fVisa = document.getElementById('dc-filter-visa')?.value;
         if (s) activeFilters.push('Status: ' + s);
         if (d) activeFilters.push('Department: ' + d);
         if (n) activeFilters.push('Nationality: ' + n);
         if (b) activeFilters.push('Batch: ' + b);
         if (q) activeFilters.push('Search: ' + q);
+        if (fPass) activeFilters.push('Passport: ' + fPass);
+        if (fMedExam) activeFilters.push('Med. Exam: ' + fMedExam);
+        if (fMedAna) activeFilters.push('Med. Analysis: ' + fMedAna);
+        if (fVisa) activeFilters.push('Visa: ' + fVisa);
 
         const filterMsg = activeFilters.length
           ? `<div style="font-size:.85rem;margin-top:8px;color:var(--text-secondary);">Active filters: ${activeFilters.join(' · ')}</div>`
