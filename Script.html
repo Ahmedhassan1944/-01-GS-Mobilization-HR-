@@ -572,11 +572,21 @@
   // ─────────────────────────────────────────────
 
   const Router = {
+    _activeIntervals: [],
+    registerInterval(handle) { this._activeIntervals.push(handle); },
+    clearIntervals() { 
+      this._activeIntervals.forEach(h => clearInterval(h)); 
+      this._activeIntervals = []; 
+    },
     navigate(view, params = {}) {
       if (view === 'login') {
         this.navigate('dashboard', params);
         return;
       }
+      
+      // Clear all background polling when leaving a view
+      this.clearIntervals();
+      
       App.setState({ previousView: App.state.currentView, currentView: view, ...params });
       renderSidebar();
       renderView();
@@ -3857,13 +3867,17 @@
         const candsRes = await GAS.call('api_getAllCandidates');
         if (!candsRes.success) throw new Error(candsRes.error);
         const cands = candsRes.data.slice(0, 20); // limit for performance
+        const candIds = cands.map(c => c.CandidateID);
+        const candNameMap = {};
+        cands.forEach(c => { candNameMap[c.CandidateID] = c.FullName; });
 
-        const logPromises = cands.map(c => GAS.call('api_getAuditLog', c.CandidateID));
-        const results = await Promise.all(logPromises);
+        // Single batch call:
+        const res = await GAS.call('api_getBatchAuditLogs', candIds);
+        if (!res.success) throw new Error(res.error);
 
-        Views._allLogs = results.flatMap((r, i) =>
-          r.success ? r.data.map(l => ({ ...l, _candidateName: cands[i].FullName })) : []
-        ).sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+        Views._allLogs = (res.data || [])
+          .map(l => ({ ...l, _candidateName: candNameMap[l.CandidateID] || '' }))
+          .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
 
         Views._renderAuditTable(Views._allLogs);
       } catch (err) {
@@ -5533,6 +5547,7 @@
       setTimeout(() => {
         if (Views._dcDownloadState && !Views._dcDownloadState.cancelled) {
           pollInterval = setInterval(pollProgress, 500);
+          Router.registerInterval(pollInterval);
           Views._dcDownloadState.stopPolling = stopPolling;
         }
       }, 500);

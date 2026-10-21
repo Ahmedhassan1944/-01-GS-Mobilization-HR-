@@ -821,6 +821,31 @@ function api_getAuditLog(candidateId) {
   }
 }
 
+/**
+ * Public: Retrieves audit logs for multiple candidates in a single batch roundtrip.
+ * @param {Array<string>} candidateIds
+ */
+function api_getBatchAuditLogs(candidateIds) {
+  const auth = requireRole_(['Admin', 'HR']);
+  if (!auth.authorized) return { success: false, error: auth.error };
+  try {
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0) return { success: true, data: [] };
+    const idSet = new Set(candidateIds.map(String));
+    const sheet = getSheet_(SHEET_LOGS);
+    const [headers, ...rows] = sheet.getDataRange().getValues();
+    const candIdIdx = headers.indexOf('CandidateID');
+    
+    const logs = rows.filter(row => idSet.has(String(row[candIdIdx]))).map(row => {
+      const obj = {};
+      headers.forEach((h, i) => obj[h] = row[i]);
+      return obj;
+    });
+    return { success: true, data: logs };
+  } catch (e) {
+    return { success: false, error: e.message };
+  }
+}
+
 // ─────────────────────────────────────────────
 // SYSTEM SETTINGS & DYNAMIC CONFIGURATION ENGINE
 // ─────────────────────────────────────────────

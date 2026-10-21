@@ -412,6 +412,8 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     var uniqueCandidatesFound = {};
     var isSingleDocType = docTypes.length === 1;
     var usedFileNames = {};
+    var MAX_TOTAL_BYTES = 9 * 1024 * 1024; // 9 MB safety buffer
+    var totalBytes = 0;
 
     for (var k = 0; k < matchedDocs.length; k++) {
       var doc    = matchedDocs[k];
@@ -429,6 +431,11 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       if (fileId) {
         try {
           var file = DriveApp.getFileById(fileId);
+          var size = file.getSize();
+          if (totalBytes + size > MAX_TOTAL_BYTES) {
+            throw new Error('Total files exceed Google\'s 9MB memory limit. Please select fewer candidates or document types for this batch.');
+          }
+          totalBytes += size;
           var blob = file.getBlob();
           
           if (isSingleDocType) {
@@ -452,6 +459,7 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
           blobs.push(blob);
           uniqueCandidatesFound[doc.candidateId] = true;
         } catch (fileErr) {
+          if (fileErr.message.includes('9MB memory limit')) throw fileErr;
           Logger.log('Error getting file ' + fileId + ': ' + fileErr.message);
         }
       }
