@@ -1029,13 +1029,33 @@ function api_getSystemSettings() {
  * @param {string} categoryKey
  * @param {Array<string>} itemsArray
  */
-function api_updateSystemSettings(categoryKey, itemsArray) {
+function api_updateSystemSettings(categoryKeyOrObject, itemsArray = null) {
   const auth = requireRole_(['Admin', 'HR']);
   if (!auth.authorized) return { success: false, error: auth.error };
 
   try {
-    if (!categoryKey) throw new Error('categoryKey is required');
-    if (!Array.isArray(itemsArray)) throw new Error('itemsArray must be an array');
+    if (!categoryKeyOrObject) throw new Error('categoryKey or update object is required');
+
+    // If batch object provided: { statuses: [...], excludedStatuses: [...] }
+    const updates = (typeof categoryKeyOrObject === 'object' && categoryKeyOrObject !== null)
+      ? categoryKeyOrObject
+      : { [categoryKeyOrObject]: itemsArray };
+
+    // Clean arrays: remove empty strings, trim, and deduplicate case-insensitively
+    for (const key in updates) {
+      if (Array.isArray(updates[key])) {
+        const seen = new Set();
+        updates[key] = updates[key].reduce((acc, item) => {
+          const cleanItem = String(item || '').trim();
+          const lowerItem = cleanItem.toLowerCase();
+          if (cleanItem !== '' && !seen.has(lowerItem)) {
+            seen.add(lowerItem);
+            acc.push(cleanItem); // Keep original case, but prevent duplicates
+          }
+          return acc;
+        }, []);
+      }
+    }
 
     getOrCreateSettingsFromDb_();
     const ss = getSpreadsheet_();
@@ -1052,12 +1072,13 @@ function api_updateSystemSettings(categoryKey, itemsArray) {
     const updatedCol = headers.indexOf('UpdatedAt');
 
     const now = new Date().toISOString();
+    const updatedCategories = new Set(Object.keys(updates));
 
     const retainedRows = [];
     for (let i = 1; i < data.length; i++) {
       const row = data[i];
       const rowCat = String(row[catCol !== -1 ? catCol : 1] || '').trim();
-      if (rowCat !== categoryKey) {
+      if (!updatedCategories.has(rowCat)) {
         retainedRows.push([
           row[0] || '',
           row[1] || '',
@@ -1080,20 +1101,24 @@ function api_updateSystemSettings(categoryKey, itemsArray) {
       }
     }
 
-    const newCategoryRows = itemsArray.map((item, idx) => {
-      maxIdNum++;
-      const val = typeof item === 'object' && item !== null ? (item.val || item.value || JSON.stringify(item)) : String(item).trim();
-      const meta = typeof item === 'object' && item !== null && item.meta ? JSON.stringify(item.meta) : '';
-      return [
-        'SET-' + String(maxIdNum).padStart(4, '0'),
-        categoryKey,
-        val,
-        idx + 1,
-        meta,
-        now,
-        now
-      ];
-    });
+    const newCategoryRows = [];
+    for (const catKey of Object.keys(updates)) {
+      const items = Array.isArray(updates[catKey]) ? updates[catKey] : [];
+      items.forEach((item, idx) => {
+        maxIdNum++;
+        const val = typeof item === 'object' && item !== null ? (item.val || item.value || JSON.stringify(item)) : String(item).trim();
+        const meta = typeof item === 'object' && item !== null && item.meta ? JSON.stringify(item.meta) : '';
+        newCategoryRows.push([
+          'SET-' + String(maxIdNum).padStart(4, '0'),
+          catKey,
+          val,
+          idx + 1,
+          meta,
+          now,
+          now
+        ]);
+      });
+    }
 
     const allRows = [SETTINGS_HEADERS, ...retainedRows, ...newCategoryRows];
 
@@ -1105,7 +1130,7 @@ function api_updateSystemSettings(categoryKey, itemsArray) {
     CacheService.getScriptCache().remove('system_settings');
 
     const updatedSettings = getOrCreateSettingsFromDb_();
-    api_writeLog_('SETTINGS', Session.getActiveUser().getEmail(), 'Updated System Settings: ' + categoryKey);
+    api_writeLog_('SETTINGS', Session.getActiveUser().getEmail(), 'Updated System Settings: ' + Object.keys(updates).join(', '));
 
     return { success: true, settings: updatedSettings };
   } catch (e) {

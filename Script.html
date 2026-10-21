@@ -6261,8 +6261,9 @@
       }
       if (!App.state.settings[categoryKey]) App.state.settings[categoryKey] = [];
       const list = App.state.settings[categoryKey];
-      if (list.includes(val)) {
-        Toast.warning(`"${val}" already exists in ${categoryKey}.`);
+      const safeNorm = (str) => String(str || '').trim().toLowerCase();
+      if (list.some(item => safeNorm(item) === safeNorm(val))) {
+        Toast.error('This item already exists.');
         return;
       }
       list.push(val);
@@ -6292,8 +6293,9 @@
         Toast.warning('Item name cannot be empty.');
         return;
       }
-      if (trimmed !== current && list.includes(trimmed)) {
-        Toast.warning(`"${trimmed}" already exists.`);
+      const safeNorm = (str) => String(str || '').trim().toLowerCase();
+      if (safeNorm(trimmed) !== safeNorm(current) && list.some(item => safeNorm(item) === safeNorm(trimmed))) {
+        Toast.error('This item already exists.');
         return;
       }
       list[idx] = trimmed;
@@ -6328,6 +6330,14 @@
       }
     },
 
+    _getTempList(categoryKey) {
+      return (App.state.settings && App.state.settings[categoryKey]) ? [...App.state.settings[categoryKey]] : [];
+    },
+
+    _getTempExcludedStatuses() {
+      return (App.state.settings && App.state.settings.excludedStatuses) ? [...App.state.settings.excludedStatuses] : [];
+    },
+
     _refreshSettingsCard(categoryKey) {
       const cardEl = document.getElementById(`card-${categoryKey}`);
       if (!cardEl) return;
@@ -6350,28 +6360,43 @@
       cardEl.replaceWith(newCard);
     },
 
-    async _saveSettingCategory(categoryKey) {
+    async _saveSettingCategory(categoryKey, container) {
+      // 1. Snapshot deep clone of current state for rollback
+      const fallbackSettings = JSON.parse(JSON.stringify(App.state.settings || {}));
       const btn = document.getElementById(`btn-save-${categoryKey}`);
       if (btn) {
         btn.disabled = true;
         btn.innerHTML = `<span class="spinner spinner--sm"></span> Saving…`;
       }
+      
       try {
-        const items = App.state.settings[categoryKey] || [];
-        const res = await GAS.call('api_updateSystemSettings', categoryKey, items);
-        if (!res.success) throw new Error(res.error);
-
+        // 2. Prepare payload (Batch statuses and excludedStatuses atomically)
+        let payload;
         if (categoryKey === 'statuses') {
-          const exclRes = await GAS.call('api_updateSystemSettings', 'excludedStatuses', App.state.settings.excludedStatuses || []);
-          if (!exclRes.success) throw new Error(exclRes.error);
+          payload = {
+            statuses: Views._getTempList('statuses'),
+            excludedStatuses: Views._getTempExcludedStatuses()
+          };
+        } else {
+          payload = { [categoryKey]: Views._getTempList(categoryKey) };
         }
 
-        if (res.settings) {
+        // 3. Single RPC Call
+        const res = await GAS.call('api_updateSystemSettings', payload);
+        
+        if (res && res.success) {
+          // 4. Update memory safely with backend-sanitized result
           App.setState({ settings: res.settings });
+          Toast.success('Settings saved successfully');
+        } else {
+          throw new Error(res.error || 'Backend save failed');
         }
-        Toast.success(`✅ Saved ${categoryKey} successfully!`);
       } catch (err) {
-        Toast.error('Save failed: ' + err.message);
+        // 5. Rollback on failure to prevent memory spillover!
+        App.setState({ settings: fallbackSettings });
+        Toast.error('Failed to save. Changes reverted.');
+        console.error(err);
+        Views.settings(document.getElementById('app-view')); // Re-render to clear dirty UI
       } finally {
         if (btn) {
           btn.disabled = false;
