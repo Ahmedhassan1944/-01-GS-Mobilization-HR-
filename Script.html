@@ -1,4 +1,4 @@
-﻿<script>
+<script>
   /**
    * =========================================================
    * ENTERPRISE HR MOBILIZATION — FRONTEND SPA (Script.html)
@@ -1146,14 +1146,43 @@
     },
 
     _normBatch(v) {
-      let str = (v || '').toString().trim().toLowerCase().replace(/[-_]/g, ' ');
+      if (!v) return '';
+      let str = String(v).trim().toLowerCase().replace(/[-_]/g, ' ').replace(/\s+/g, ' ');
+      str = str.replace(/^staff\s+batch\s+/, 'batch ').replace(/^staff\s+(\d+)/, 'batch $1');
       if (str.startsWith('staff batch')) {
         str = str.replace(/^staff\s+/, '');
       }
-      return str;
+      str = str.replace(/^kalhat\s+(\d+)/, 'kalhat batch $1');
+      if (/^\d+$/.test(str)) {
+        str = 'batch ' + parseInt(str, 10);
+      }
+      str = str.replace(/batch\s+0*(\d+)/, 'batch $1');
+      str = str.replace(/kalhat\s+batch\s+0*(\d+)/, 'kalhat batch $1');
+      return str.trim();
     },
     _getBatchValue(c) {
-      return c.Batch_Number || c['Batch Number'] || '';
+      if (!c) return '';
+      return c.batchNumber || c.Batch_Number || c['Batch Number'] || c.batch_number || c.BatchNumber || c.batch || c.Batch || '';
+    },
+    _isBatchMatch(b1, b2) {
+      if (!b1 || !b2) return false;
+      const s1 = String(b1).trim().toLowerCase();
+      const s2 = String(b2).trim().toLowerCase();
+      if (s1 === s2) return true;
+
+      const n1 = Views._normBatch(b1);
+      const n2 = Views._normBatch(b2);
+      if (n1 && n2 && n1 === n2) return true;
+      if (n1 && n2 && n1.replace(/\s+/g, '') === n2.replace(/\s+/g, '')) return true;
+
+      const isKalhat1 = s1.includes('kalhat') || n1.includes('kalhat');
+      const isKalhat2 = s2.includes('kalhat') || n2.includes('kalhat');
+      if (isKalhat1 === isKalhat2) {
+        const d1 = (s1.match(/\d+/) || [''])[0];
+        const d2 = (s2.match(/\d+/) || [''])[0];
+        if (d1 && d2 && d1 === d2) return true;
+      }
+      return false;
     },
     _getBatchCardsHtml(activeCands) {
       const staffBatches = (App.state.settings && App.state.settings.staffBatches) || [
@@ -1466,7 +1495,7 @@
         const matchPos = !posFilter || c.Position === posFilter;
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter; // <-- SURGICAL FIX ADDED
-        const matchBatch = !batchFilter || (Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(batchFilter));
+        const matchBatch = !batchFilter || Views._isBatchMatch(Views._getBatchValue(c), batchFilter);
         if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;
         // Include status
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
@@ -2143,7 +2172,7 @@
         const matchPos = !posFilter || c.Position === posFilter;
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter;
-        const matchBatch = !batchFilter || (Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(batchFilter));
+        const matchBatch = !batchFilter || Views._isBatchMatch(Views._getBatchValue(c), batchFilter);
         // Multi-select status INCLUDE (empty array = all pass)
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Multi-select status EXCLUDE (empty array = nothing excluded)
@@ -4610,7 +4639,12 @@
 
     async _dcLoad() {
       const dc = App.state.documentsCenter;
-      if (dc.loaded) { Views._dcRender(); return; }
+      if (dc.loaded) {
+        Views._dcPopulateFilterDropdowns();
+        Views._dcRender();
+        if (typeof Views._dcUpdateExpiryKpis === 'function') Views._dcUpdateExpiryKpis();
+        return;
+      }
       const tbody = document.getElementById('dc-tbody');
       try {
         const filtersJson = JSON.stringify({ status: [], department: [], nationality: [], position: '', search: '' });
@@ -4799,7 +4833,16 @@
       fillMulti('dc-filter-status-exclude', statuses);
       fillMulti('dc-filter-dept', opts.departments);
       fillMulti('dc-filter-nat', opts.nationalities);
-      fillMulti('dc-filter-batch', opts.batchNumbers);
+
+      const allBatches = Array.from(new Set([
+        ...(opts.batchNumbers || []),
+        ...(App.getAllBatches ? App.getAllBatches() : []),
+        ...(App.state.settings?.staffBatches || []),
+        ...(App.state.settings?.kalhatBatches || []),
+        ...(dc.candidates || []).map(c => Views._getBatchValue(c)).filter(Boolean)
+      ])).filter(Boolean).sort();
+
+      fillMulti('dc-filter-batch', allBatches);
 
       // Upgrade all plain selects to premium checkbox-dropdowns
       Views._initPremiumMultiSelects();
@@ -4867,7 +4910,13 @@
         // Department / Nationality / Batch (multi-select OR logic)
         if (depts.length > 0   && !depts.includes(c.department || c.Department)) return false;
         if (nats.length > 0    && !nats.includes(c.nationality || c.Nationality)) return false;
-        if (batches.length > 0 && !batches.some(b => String(b).trim() === String(Views._getBatchValue(c)).trim())) return false;
+        // FIX: Bulletproof Batch Matching using normalized string comparisons
+        if (batches.length > 0) {
+          const candBatch = Views._getBatchValue(c);
+          if (!candBatch) return false;
+          const isMatch = batches.some(selectedBatch => Views._isBatchMatch(candBatch, selectedBatch));
+          if (!isMatch) return false;
+        }
 
         // Document expiry state (multi-value — any of the selected states matches)
         if (fPass.length > 0    && !fPass.includes(getDocState(c, 'passport'))) return false;

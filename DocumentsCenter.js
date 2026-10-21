@@ -39,8 +39,15 @@ function api_getDocumentsCenterData(filtersJson) {
     var cStatusIdx = cHeaders.indexOf('CurrentStatus');
     var cCoordIdx = cHeaders.indexOf('AssignedCoordinatorEmail');
     var cBatchIdx = cHeaders.indexOf('Batch_Number');
+    if (cBatchIdx === -1) cBatchIdx = cHeaders.indexOf('Batch Number');
+    if (cBatchIdx === -1) cBatchIdx = cHeaders.indexOf('BatchNumber');
+    if (cBatchIdx === -1) cBatchIdx = cHeaders.indexOf('Batch');
     var cFolderIdx = cHeaders.indexOf('DriveFolderID');
+    if (cFolderIdx === -1) cFolderIdx = cHeaders.indexOf('DriveFolderId');
+    if (cFolderIdx === -1) cFolderIdx = cHeaders.indexOf('Drive Folder ID');
     var cHrCodeIdx = cHeaders.indexOf('HR_Code');
+    if (cHrCodeIdx === -1) cHrCodeIdx = cHeaders.indexOf('HR Code');
+    if (cHrCodeIdx === -1) cHrCodeIdx = cHeaders.indexOf('HRCode');
 
     // Parse filters
     var fStatus = filters.status || [];
@@ -106,7 +113,11 @@ function api_getDocumentsCenterData(filtersJson) {
         status: status,
         hrCode: hrCode,
         driveFolderId: folderId,
-        batchNumber: batch
+        batchNumber: batch,
+        Batch_Number: batch,
+        'Batch Number': batch,
+        BatchNumber: batch,
+        batch: batch
       });
     }
 
