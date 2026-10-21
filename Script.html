@@ -5322,8 +5322,8 @@
 
     async _dcDownload() {
       const dc = App.state.documentsCenter;
-      const candidateIds = [...dc.selectedIds];
-      const docTypes = [...document.querySelectorAll('.dc-doctype-check:checked')].map(cb => cb.value);
+      const candidateIds = Array.from(dc?.selectedIds || []);
+      const docTypes = Array.from(document.querySelectorAll('.dc-doctype-check:checked')).map(cb => cb.value);
 
       if (candidateIds.length === 0) { Toast.show('Select at least one candidate.', 'warning'); return; }
       if (docTypes.length === 0) { Toast.show('Select at least one document type.', 'warning'); return; }
@@ -5338,12 +5338,11 @@
       // ── Show and reset Progress UI ──
       Views._dcShowProgress();
 
-      const btn = document.getElementById('dc-download-btn');
-      btn.disabled = true;
+      const btn = document.getElementById('btn-download-zip') || document.getElementById('dc-download-btn');
+      if (btn) btn.disabled = true;
 
       // ── Start progress polling interval (500ms) ──
       let pollInterval = null;
-      let cancelled = false;
 
       const stopPolling = () => {
         if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
@@ -5353,61 +5352,98 @@
       Views._dcDownloadState = { cancelled: false, stopPolling };
 
       const pollProgress = () => {
-        if (cancelled || (Views._dcDownloadState && Views._dcDownloadState.cancelled)) {
+        if (Views._dcDownloadState && Views._dcDownloadState.cancelled) {
           stopPolling();
           return;
         }
+        if (typeof google === 'undefined' || !google.script || !google.script.run) return;
+
         google.script.run
           .withSuccessHandler(prog => {
             if (!prog || (Views._dcDownloadState && Views._dcDownloadState.cancelled)) return;
+            if (prog.stage === 'error') {
+              stopPolling();
+              Views._dcProgressError(prog.message || 'Error occurred during ZIP creation.');
+              return;
+            }
             Views._dcUpdateProgressUI(prog);
           })
-          .withFailureHandler(() => { /* silently ignore polling errors */ })
+          .withFailureHandler(err => {
+            console.warn('[DC] Progress polling warning:', err);
+          })
           .api_getBatchDownloadProgress(batchId);
       };
 
-      // Small initial delay so the backend has time to write Stage 0 to cache
+      // Small initial delay so backend has time to write Stage 0 to cache
       setTimeout(() => {
         if (Views._dcDownloadState && !Views._dcDownloadState.cancelled) {
           pollInterval = setInterval(pollProgress, 500);
           Views._dcDownloadState.stopPolling = stopPolling;
         }
-      }, 800);
+      }, 500);
+
+      const handleZipSuccess = res => {
+        stopPolling();
+        if (!res || !res.success) {
+          Views._dcProgressError(res?.error || 'Batch ZIP generation failed.');
+          if (btn) btn.disabled = false;
+          Views._dcUpdateDownloadBtn();
+          return;
+        }
+
+        try {
+          // Trigger browser download from base64
+          const byteChars = atob(res.base64);
+          const byteNums = new Array(byteChars.length).fill(0).map((_, i) => byteChars.charCodeAt(i));
+          const byteArr = new Uint8Array(byteNums);
+          const blob = new Blob([byteArr], { type: 'application/zip' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = res.filename || `Documents_${batchId}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+
+          // ── Show success state in Progress UI ──
+          Views._dcProgressSuccess(
+            `✅ Downloaded ${res.fileCount} file(s) for ${res.candidateCount} candidate(s).`
+          );
+          Toast.show(`✅ Downloaded ${res.fileCount} files for ${res.candidateCount} candidates.`, 'success');
+        } catch (dlErr) {
+          Views._dcProgressError('Failed to assemble download file: ' + dlErr.message);
+        } finally {
+          if (btn) btn.disabled = false;
+          Views._dcUpdateDownloadBtn();
+        }
+      };
+
+      const handleZipFailure = err => {
+        stopPolling();
+        const msg = (err && (err.message || err.toString())) || 'Server error during ZIP creation.';
+        Views._dcProgressError(msg);
+        if (btn) btn.disabled = false;
+        Views._dcUpdateDownloadBtn();
+      };
 
       try {
-        const res = await GAS.call('api_batchDownloadZip',
-          JSON.stringify(candidateIds),
-          JSON.stringify(docTypes),
-          batchId
-        );
-
-        stopPolling();
-
-        if (!res.success) throw new Error(res.error);
-
-        // Trigger browser download from base64
-        const byteChars = atob(res.base64);
-        const byteNums = new Array(byteChars.length).fill(0).map((_, i) => byteChars.charCodeAt(i));
-        const byteArr = new Uint8Array(byteNums);
-        const blob = new Blob([byteArr], { type: 'application/zip' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = res.filename; a.click();
-        URL.revokeObjectURL(url);
-
-        // ── Show success state in Progress UI ──
-        Views._dcProgressSuccess(
-          `✅ Downloaded ${res.fileCount} file(s) for ${res.candidateCount} candidate(s).`
-        );
-
-        Toast.show(`✅ Downloaded ${res.fileCount} files for ${res.candidateCount} candidates.`, 'success');
-
+        if (typeof google !== 'undefined' && google.script && google.script.run) {
+          google.script.run
+            .withSuccessHandler(handleZipSuccess)
+            .withFailureHandler(handleZipFailure)
+            .api_batchDownloadZip(JSON.stringify(candidateIds), JSON.stringify(docTypes), batchId);
+        } else {
+          // Offline / Local mock preview fallback
+          const res = await GAS.call('api_batchDownloadZip',
+            JSON.stringify(candidateIds),
+            JSON.stringify(docTypes),
+            batchId
+          );
+          handleZipSuccess(res);
+        }
       } catch (e) {
-        stopPolling();
-        Views._dcProgressError(e.message);
-      } finally {
-        btn.disabled = false;
-        Views._dcUpdateDownloadBtn();
+        handleZipFailure(e);
       }
     },
 

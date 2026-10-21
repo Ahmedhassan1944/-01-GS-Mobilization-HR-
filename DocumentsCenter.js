@@ -298,29 +298,41 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       filesDownloaded: 0
     });
 
-    var candidateIds = JSON.parse(candidateIdsJson || '[]');
-    var docTypes     = JSON.parse(docTypesJson     || '[]');
-
-    if (!candidateIds.length || !docTypes.length) {
-      throw new Error('Candidate IDs and Document Types must be provided.');
+    var candidateIds = [];
+    var docTypes = [];
+    try {
+      candidateIds = typeof candidateIdsJson === 'string' ? JSON.parse(candidateIdsJson || '[]') : (candidateIdsJson || []);
+      docTypes = typeof docTypesJson === 'string' ? JSON.parse(docTypesJson || '[]') : (docTypesJson || []);
+    } catch (parseErr) {
+      var errParseMsg = 'Invalid parameters received: ' + parseErr.message;
+      setProgress_(batchId, { stage: 'error', percent: 0, message: errParseMsg, filesFound: 0, filesDownloaded: 0 });
+      return { success: false, error: errParseMsg };
     }
 
-    var ss = SpreadsheetApp.openById(
-      PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID')
-    );
+    if (!Array.isArray(candidateIds) || candidateIds.length === 0 || !Array.isArray(docTypes) || docTypes.length === 0) {
+      var emptyInputErr = 'No candidates or document types selected.';
+      setProgress_(batchId, { stage: 'error', percent: 0, message: emptyInputErr, filesFound: 0, filesDownloaded: 0 });
+      return { success: false, error: emptyInputErr };
+    }
+
+    var spreadsheetId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+    if (!spreadsheetId) {
+      throw new Error("Script Property 'SPREADSHEET_ID' is not configured.");
+    }
+    var ss = SpreadsheetApp.openById(spreadsheetId);
 
     // Read Candidates → build CandidateID → FullName map
     var cSheet = ss.getSheetByName('tbl_Candidates');
     if (!cSheet) throw new Error("Sheet 'tbl_Candidates' not found.");
     var cData    = cSheet.getDataRange().getValues();
-    var cHeaders = cData[0];
+    var cHeaders = cData[0] || [];
     var cIdIdx   = cHeaders.indexOf('CandidateID');
     var cNameIdx = cHeaders.indexOf('FullName');
 
     var candidateMap = {};
     for (var i = 1; i < cData.length; i++) {
-      candidateMap[(cData[i][cIdIdx] || '').toString()] =
-        (cData[i][cNameIdx] || '').toString();
+      candidateMap[(cData[i][cIdIdx] || '').toString().trim()] =
+        (cData[i][cNameIdx] || '').toString().trim();
     }
 
     // ── Stage 3%: Sheet data loaded ───────────────────────────────────────
@@ -336,7 +348,7 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     var dSheet = ss.getSheetByName('tbl_Documents');
     if (!dSheet) throw new Error("Sheet 'tbl_Documents' not found.");
     var dData    = dSheet.getDataRange().getValues();
-    var dHeaders = dData[0];
+    var dHeaders = dData[0] || [];
 
     var dCandIdIdx = dHeaders.indexOf('CandidateID');
     var dTypeIdx   = dHeaders.indexOf('DocType');
@@ -345,31 +357,40 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     var dStatusIdx = dHeaders.indexOf('ApprovalStatus');
     var dDocIdIdx  = dHeaders.indexOf('DocumentID');
 
+    var normCandIds = candidateIds.map(function(id) { return String(id).trim(); });
+    var normDocTypes = docTypes.map(function(t) { return String(t).trim().toLowerCase(); });
+
     var matchedDocs = [];
     for (var j = 1; j < dData.length; j++) {
       var row    = dData[j];
-      var cId    = (row[dCandIdIdx] || '').toString();
-      var type   = (row[dTypeIdx]   || '').toString();
-      var status = (row[dStatusIdx] || '').toString();
-      var docId  = (row[dDocIdIdx]  || '').toString();
+      var cId    = (row[dCandIdIdx] || '').toString().trim();
+      var type   = (row[dTypeIdx]   || '').toString().trim();
+      var status = (row[dStatusIdx] || '').toString().trim();
+      var docId  = (row[dDocIdIdx]  || '').toString().trim();
 
       if (
-        candidateIds.indexOf(cId)  !== -1 &&
-        docTypes.indexOf(type)     !== -1 &&
+        normCandIds.indexOf(cId) !== -1 &&
+        normDocTypes.indexOf(type.toLowerCase()) !== -1 &&
         isDocumentAvailable_({ DocumentID: docId, ApprovalStatus: status })
       ) {
         matchedDocs.push({
           candidateId:   cId,
           candidateName: candidateMap[cId] || cId,
           docType:       type,
-          fileName:      (row[dNameIdx] || '').toString(),
-          fileUrl:       (row[dUrlIdx]  || '').toString()
+          fileName:      (row[dNameIdx] || '').toString().trim(),
+          fileUrl:       (row[dUrlIdx]  || '').toString().trim()
         });
       }
     }
 
     var matchCount  = matchedDocs.length;
-    var totalFiles  = Math.max(matchCount, 1); // avoid division by zero
+    var totalFiles  = Math.max(matchCount, 1);
+
+    if (matchCount === 0) {
+      var noFilesErr = 'No approved document records found for the selected candidate(s) and document type(s).';
+      setProgress_(batchId, { stage: 'error', percent: 0, message: noFilesErr, filesFound: 0, filesDownloaded: 0 });
+      return { success: false, error: noFilesErr };
+    }
 
     if (matchCount > 200) {
       throw new Error(
@@ -387,7 +408,6 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     });
 
     // ── Stage 5% → 65%: Download each file from Drive ─────────────────────
-    // Each file accounts for (60 / totalFiles)% of the bar.
     var blobs = [];
     var uniqueCandidatesFound = {};
     var isSingleDocType = docTypes.length === 1;
@@ -397,7 +417,6 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       var doc    = matchedDocs[k];
       var fileId = extractFileId_(doc.fileUrl);
 
-      // Announce BEFORE fetching so the bar moves at the start of each file
       var dlPercent = Math.round(5 + (k / totalFiles) * 60);
       setProgress_(batchId, {
         stage: 'downloading',
@@ -413,12 +432,10 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
           var blob = file.getBlob();
           
           if (isSingleDocType) {
-            // Flat mode: rename to candidate Full Name
             var cleanName = (doc.candidateName || 'Candidate').replace(/[\\/:*?"<>|]/g, '_').trim();
             var ext = doc.fileName.indexOf('.') !== -1 ? doc.fileName.split('.').pop() : 'pdf';
             var baseFileName = cleanName + '.' + ext;
             
-            // Disambiguate collision
             if (usedFileNames[baseFileName]) {
               usedFileNames[baseFileName]++;
               baseFileName = cleanName + ' (' + doc.candidateId.slice(0, 6) + ').' + ext;
@@ -428,7 +445,6 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
             
             blob.setName(baseFileName);
           } else {
-            // Hierarchical mode: candidate subfolder
             var safeCandName = doc.candidateName.replace(/[\/\\]/g, '_');
             blob.setName(safeCandName + '/' + doc.docType + '_' + doc.fileName);
           }
@@ -442,8 +458,8 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     }
 
     if (blobs.length === 0) {
-      var emptyErr = 'No files found for the selected candidates and document types.';
-      setProgress_(batchId, { stage: 'error', percent: 0, message: emptyErr, filesFound: 0, filesDownloaded: 0 });
+      var emptyErr = 'Unable to download any files from Google Drive. Please verify Drive file permissions and file links.';
+      setProgress_(batchId, { stage: 'error', percent: 0, message: emptyErr, filesFound: matchCount, filesDownloaded: 0 });
       return { success: false, error: emptyErr };
     }
 
@@ -518,15 +534,15 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
     };
 
   } catch (e) {
-    Logger.log('Error in api_batchDownloadZip: ' + e.message);
+    Logger.log('Error in api_batchDownloadZip: ' + e.message + '\n' + e.stack);
     setProgress_(batchId, {
       stage:   'error',
       percent: 0,
-      message: e.message,
+      message: e.message || 'An unexpected server error occurred during ZIP creation.',
       filesFound: 0,
       filesDownloaded: 0
     });
-    return { success: false, error: e.message };
+    return { success: false, error: e.message || 'An unexpected server error occurred.' };
   }
 }
 
