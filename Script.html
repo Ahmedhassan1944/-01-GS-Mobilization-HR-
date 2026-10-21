@@ -3899,14 +3899,18 @@
     },
 
     // ── CALENDAR VIEW ──────────────────────────────
-    async calendar(container) {
+    async calendar(container, forceFetch = false) {
       container.innerHTML = `
       <div class="page-header">
         <div>
           <h1 class="page-header__title">Follow-up Calendar</h1>
           <p class="page-header__sub">Manage candidate appointments and deadlines</p>
         </div>
-
+        <div class="page-header__actions">
+          <button class="btn btn--outline btn--sm" onclick="Views.calendar(document.getElementById('app-view'), true)" title="Force Refresh Calendar">
+            🔄 Refresh
+          </button>
+        </div>
       </div>
       
       <div class="calendar-filters">
@@ -3937,6 +3941,21 @@
       Views._calendarCursor = new Date();
       Views._calendarSelectedDate = null;
 
+      // Add this at the top of Views.calendar before fetching:
+      if (!forceFetch && App.state.calendarEvents && App.state.calendarEvents.length > 0) {
+        const cachedEvents = App.state.calendarEvents;
+        const activeKpi = document.getElementById('cal-kpi-active');
+        if (activeKpi) activeKpi.textContent = cachedEvents.filter(e => e.Status === 'Active' || !e.Status).length;
+        
+        Views._renderMonthCalendar();
+        if (typeof Views._initCalendarDelegation === 'function') Views._initCalendarDelegation();
+        
+        const initialFilter = App.state.filter || 'All';
+        const btn = document.querySelector(`button[data-cal-filter="${initialFilter}"]`);
+        Views._applyCalendarFilter(initialFilter, btn);
+        return; // Short-circuit!
+      }
+
       try {
         const res = await GAS.call('api_getAllUpcomingEvents');
         if (res.success) {
@@ -3944,9 +3963,11 @@
           Views._upcomingCount = res.data.length;
           renderSidebar(); // update badge
 
-          document.getElementById('cal-kpi-active').textContent = res.data.length;
+          const activeKpi = document.getElementById('cal-kpi-active');
+          if (activeKpi) activeKpi.textContent = res.data.filter(e => e.Status === 'Active' || !e.Status).length;
 
           Views._renderMonthCalendar();
+          if (typeof Views._initCalendarDelegation === 'function') Views._initCalendarDelegation();
 
           const initialFilter = App.state.filter || 'All';
           const btn = document.querySelector(`button[data-cal-filter="${initialFilter}"]`);
@@ -4074,7 +4095,7 @@
 
         cellsHtml += `
           <div class="month-calendar__day ${isToday ? 'month-calendar__day--today' : ''} ${dayEvents.length ? 'month-calendar__day--has-events' : ''} ${isSelected ? 'month-calendar__day--selected' : ''}"
-               onclick="Views._selectCalendarDay('${dateKey}')">
+               data-date-key="${dateKey}">
             <div class="month-calendar__day-num">${d}</div>
             ${dotsHtml}
           </div>`;
@@ -4100,6 +4121,22 @@
           ${cellsHtml}
         </div>
       `;
+
+      if (typeof Views._initCalendarDelegation === 'function') Views._initCalendarDelegation();
+    },
+
+    _initCalendarDelegation() {
+      const container = document.getElementById('month-calendar');
+      if (!container || container.dataset.delegated) return;
+      
+      container.addEventListener('click', (e) => {
+        const dayCell = e.target.closest('.month-calendar__day[data-date-key]');
+        if (dayCell) {
+          Views._selectCalendarDay(dayCell.dataset.dateKey);
+        }
+      });
+      
+      container.dataset.delegated = 'true';
     },
 
     _calNavigate(delta) {
@@ -4404,9 +4441,22 @@
         const res = await GAS.call('api_deleteCalendarEvent', eventId);
         if (res.success) {
           Toast.success('Event deleted.');
-          const cv = App.state.currentView;
-          if (cv === 'calendar') Router.navigate('calendar');
-          else if (cv === 'candidate-detail') Views._loadCandidateEvents(App.state.selectedCandidate.CandidateID);
+          if (App.state.calendarEvents) {
+            App.setState({ calendarEvents: App.state.calendarEvents.filter(e => e.EventID !== eventId) });
+            Views._upcomingCount = App.state.calendarEvents.length;
+            if (typeof renderSidebar === 'function') renderSidebar();
+            const activeKpi = document.getElementById('cal-kpi-active');
+            if (activeKpi) activeKpi.textContent = App.state.calendarEvents.filter(e => e.Status === 'Active' || !e.Status).length;
+          }
+          
+          if (App.state.currentView === 'calendar') {
+            Views._renderMonthCalendar();
+            if (typeof Views._initCalendarDelegation === 'function') Views._initCalendarDelegation();
+            const activeFilter = document.querySelector('.quick-filter-btn--active')?.dataset.calFilter || 'All';
+            Views._applyCalendarFilter(activeFilter);
+          } else if (App.state.currentView === 'candidate-detail' && App.state.selectedCandidate) {
+            Views._loadCandidateEvents(App.state.selectedCandidate.CandidateID);
+          }
         } else {
           Toast.error(res.error || 'Failed to delete event.');
         }
