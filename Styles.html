@@ -2662,4 +2662,50 @@ body.dark-mode .settings-btn-icon--delete:hover:not(:disabled) {
 body.dark-mode .settings-checkbox-label {
   background: #0f172a;
 }
+
+  /* ── Premium Multi-Select 2026 ──────────────────────────────── */
+  .premium-multiselect { position: relative; width: 100%; font-family: inherit; }
+  .premium-multiselect-btn {
+    width: 100%; text-align: left; background: #fff; border: 1px solid #cbd5e1;
+    padding: 8px 12px; border-radius: 6px; font-size: 13px; color: #334155;
+    cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    height: 36px; transition: border-color 0.15s;
+  }
+  .premium-multiselect-btn:hover { border-color: #94a3b8; }
+  .premium-multiselect.open .premium-multiselect-btn { border-color: var(--primary, #3b82f6); box-shadow: 0 0 0 3px rgba(59,130,246,.15); }
+  .premium-multiselect-dropdown {
+    position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: #fff;
+    border: 1px solid #e2e8f0; border-radius: 8px;
+    box-shadow: 0 10px 25px -5px rgba(0,0,0,0.12), 0 4px 10px -5px rgba(0,0,0,0.08);
+    max-height: 260px; overflow-y: auto; z-index: 1050; display: none; padding: 6px 0;
+  }
+  .premium-multiselect.open .premium-multiselect-dropdown { display: block; animation: msDropIn .15s ease; }
+  @keyframes msDropIn { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+  .premium-multiselect-option {
+    padding: 7px 12px; display: flex; align-items: center; gap: 10px;
+    cursor: pointer; transition: background 0.15s; font-size: 13px; color: #334155;
+    user-select: none;
+  }
+  .premium-multiselect-option:hover { background: #f1f5f9; }
+  .premium-multiselect-option input[type="checkbox"] { cursor: pointer; accent-color: var(--primary, #3b82f6); width: 14px; height: 14px; flex-shrink: 0; }
+  /* Filters grid layout */
+  .filters-grid-2026 {
+    display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;
+    padding: 14px 16px; background: #f8fafc;
+    border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 0;
+  }
+  .filters-grid-2026 + .filters-grid-2026 {
+    border-top: none; border-top-left-radius: 0; border-top-right-radius: 0;
+    background: #fff; margin-bottom: 16px;
+  }
+  .filter-col { flex: 1; min-width: 155px; }
+  .filter-label { font-size: 11px; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: .4px; margin-bottom: 6px; display: block; }
+  /* Dark mode */
+  body.dark-mode .premium-multiselect-btn { background: #1e293b; border-color: #334155; color: #e2e8f0; }
+  body.dark-mode .premium-multiselect-dropdown { background: #1e293b; border-color: #334155; }
+  body.dark-mode .premium-multiselect-option { color: #e2e8f0; }
+  body.dark-mode .premium-multiselect-option:hover { background: #273344; }
+  body.dark-mode .filters-grid-2026 { background: #1a2234; border-color: #334155; }
+  body.dark-mode .filters-grid-2026 + .filters-grid-2026 { background: #1e293b; }
+  body.dark-mode .filter-label { color: #94a3b8; }
 </style>
