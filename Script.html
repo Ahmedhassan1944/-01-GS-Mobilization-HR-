@@ -707,6 +707,9 @@
           <p class="page-header__sub">Live overview of all mobilization cases — ${fmt.date(new Date().toISOString())}</p>
         </div>
         <div class="page-header__actions">
+          <button class="btn btn--outline btn--sm" id="dash-refresh-btn" onclick="Views._refreshDashboard(true)" title="Force Refresh Dashboard">
+            🔄 Refresh
+          </button>
           <button class="btn btn--primary btn--sm" onclick="Router.navigate('new-candidate')">
             ＋ New Candidate
           </button>
@@ -1087,6 +1090,16 @@
     },
 
     _computeDashboardKpis(candidates, docCompleteness) {
+      candidates = candidates || App.state.candidates || [];
+      docCompleteness = docCompleteness || App.state.docCompleteness || {};
+
+      // Read excluded statuses directly from App.state.settings, with a safe fallback
+      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0) 
+        ? App.state.settings.excludedStatuses 
+        : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
+        
+      const EXCLUDED_KPI_STATUSES = new Set(excludedArray);
+
       const MISSING_DOC_STATUSES = new Set([
         'New Candidate', 'Documents Requested', 'Documents Under Preparing',
         'Pending Passport', 'Pending Photo', 'Pending Academic Certificate',
@@ -1100,7 +1113,6 @@
 
       candidates.forEach(c => {
         const status = (c.CurrentStatus || '').trim();
-        const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
         if (!EXCLUDED_KPI_STATUSES.has(status)) activeCount++;
         if (MISSING_DOC_STATUSES.has(status)) missingDocs++;
         if (status === 'Visa Pending') visaPending++;
@@ -1124,7 +1136,6 @@
 
       candidates.forEach(c => {
         const status = (c.CurrentStatus || '').trim();
-        const EXCLUDED_KPI_STATUSES = new Set(['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
         if (EXCLUDED_KPI_STATUSES.has(status)) return;
         
         const comp = docCompleteness && docCompleteness[c.CandidateID];
@@ -1138,7 +1149,7 @@
         }
       });
 
-      return {
+      const k = {
         activeCount, missingDocs, visaPending, visaCompleted, mobilized,
         pendingMedical, bookedMedical, docsUnderPreparing,
         taIssues, renewalPassport, notAvailable, creatingWhatsapp,
@@ -1150,6 +1161,20 @@
         missingAcademicCert: missingCount['Academic Certificate'], missingMedicalExam: missingCount['Medical Examination'],
         missingMedicalAnalysis: missingCount['Medical Analysis'], missingVisa: missingCount['Visa'], missingCV: missingCount['CV']
       };
+
+      Views._kpiData = k;
+
+      if (typeof Views._renderDashboardKpis === 'function') {
+        const allCands = App.state.candidates || [];
+        const baseCands = Views._selectedBatchFilter
+          ? allCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
+          : allCands;
+        const activeBaseCands = baseCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
+        const activeAllCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
+        Views._renderDashboardKpis(k, activeBaseCands, activeAllCands);
+      }
+
+      return k;
     },
 
     _renderKpiSectionsWithBatchFilter() {
@@ -1158,7 +1183,12 @@
         ? allCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
         : allCands;
 
-      const EXCLUDED_KPI_STATUSES = new Set(App.state.settings?.excludedStatuses || ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
+      // Read excluded statuses directly from App.state.settings, with a safe fallback
+      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0) 
+        ? App.state.settings.excludedStatuses 
+        : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
+      const EXCLUDED_KPI_STATUSES = new Set(excludedArray);
+
       const activeBaseCands = baseCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
       const k = Views._computeDashboardKpis(baseCands, App.state.docCompleteness);
 
@@ -1299,61 +1329,69 @@
       Views._restoreDashboardFilterState();
     },
 
-    async _refreshDashboard() {
+    _showGlobalSpinner() {
+      const el = document.getElementById('dashboard-table');
+      if (el) {
+        el.innerHTML = '<div class="loading-overlay"><div class="spinner spinner--dark"></div>Loading…</div>';
+      }
+    },
+
+    _hideGlobalSpinner() {
+      // Replaced when dashboard table renders
+    },
+
+    async _refreshDashboard(forceFetch = false) {
       // State for multi-select card filtering
       if (!Views._dashboardSelectedCards) Views._dashboardSelectedCards = new Set();
 
       try {
+        // 1. Intelligent Cache Short-Circuit
+        // If we already have candidates and we are not forcing a refresh, just recalculate and render!
+        if (!forceFetch && App.state.candidates && App.state.candidates.length > 0) {
+          if (typeof Views._injectExportButton === 'function') Views._injectExportButton();
+          if (typeof Views._computeDashboardKpis === 'function') Views._computeDashboardKpis();
+          if (typeof Views._renderDashboardTables === 'function') Views._renderDashboardTables();
+          return; // Exit early, no backend calls needed!
+        }
+
+        // 2. Fetch from Backend (Only if cache is empty or forceFetch is true)
+        if (typeof Views._showGlobalSpinner === 'function') Views._showGlobalSpinner();
+
         const [kpiRes, candsRes, eventsRes] = await Promise.all([
           GAS.call('api_getDashboardData'),
           GAS.call('api_getAllCandidates'),
           GAS.call('api_getAllUpcomingEvents')
         ]);
 
-        if (eventsRes.success) {
-          Views._candidateEventDots = Views._buildEventDotsMap(eventsRes.data);
-        }
-
-        if (kpiRes.success) {
-          const k = kpiRes.data;
-          Views._kpiData = k;
+        // 3. Update App.state safely
+        if (kpiRes && kpiRes.success) {
+          App.state.dashboardData = kpiRes.data;
+          Views._kpiData = kpiRes.data;
           if (kpiRes.settings) {
             App.setState({ settings: kpiRes.settings });
           }
-          Views._injectExportButton();
-
-          const allCands = candsRes.data || [];
-          const EXCLUDED_KPI_STATUSES = new Set(App.state.settings?.excludedStatuses || ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR']);
-          const activeCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
-
-          Views._renderDashboardKpis(k, activeCands, activeCands);
-        } else {
-          const errMsg = `<tr><td colspan="2" class="form-error" style="text-align:center;padding:12px;">Failed to load: ${escHtml(kpiRes.error)}</td></tr>`;
-          if (document.getElementById('kpi-grid-status')) document.getElementById('kpi-grid-status').innerHTML = errMsg;
-          if (document.getElementById('kpi-grid-batch')) document.getElementById('kpi-grid-batch').innerHTML = errMsg;
-          if (document.getElementById('kpi-grid-kalhat-batch')) document.getElementById('kpi-grid-kalhat-batch').innerHTML = errMsg;
-          if (document.getElementById('kpi-grid-has')) document.getElementById('kpi-grid-has').innerHTML = errMsg;
-          if (document.getElementById('kpi-grid-missing')) document.getElementById('kpi-grid-missing').innerHTML = errMsg;
+          if (typeof Views._injectExportButton === 'function') Views._injectExportButton();
         }
-
-        if (candsRes.success) {
-          App.setState({ candidates: candsRes.data, filteredCandidates: candsRes.data });
-          Views._populateCandidateFilterDropdowns(candsRes.data);
-          Views._renderDashboardTable(candsRes.data);
-          Views._restoreDashboardFilterState();
-
-          if (Views._dashboardSelectedCards && Views._dashboardSelectedCards.size > 0) {
-            Views._applyDashboardCardFilter();
-            if (Views._selectedBatchFilter) {
-              Views._renderKpiSectionsWithBatchFilter();
-            }
-          } else {
-            Views._applyDashboardAllFilters();
+        if (candsRes && candsRes.success) {
+          App.state.candidates = candsRes.data;
+          App.state.filteredCandidates = candsRes.data;
+        }
+        if (eventsRes && eventsRes.success) {
+          App.state.upcomingEvents = eventsRes.data;
+          if (typeof Views._buildEventDotsMap === 'function') {
+            Views._candidateEventDots = Views._buildEventDotsMap(eventsRes.data);
           }
         }
-      } catch (err) {
+
+        // 4. Compute & Render
+        if (typeof Views._computeDashboardKpis === 'function') Views._computeDashboardKpis();
+        if (typeof Views._renderDashboardTables === 'function') Views._renderDashboardTables();
+
+      } catch (error) {
+        console.error("Dashboard refresh error:", error);
         Toast.error('Failed to load dashboard data.');
-        console.error(err);
+      } finally {
+        if (typeof Views._hideGlobalSpinner === 'function') Views._hideGlobalSpinner();
       }
     },
 
@@ -1761,6 +1799,30 @@
           el.style.transform = 'translateY(0)';
         });
       }, 180);
+    },
+
+    _renderDashboardTables() {
+      const cands = App.state.candidates || [];
+      if (typeof Views._populateCandidateFilterDropdowns === 'function') {
+        Views._populateCandidateFilterDropdowns(cands);
+      }
+      if (typeof Views._renderDashboardTable === 'function') {
+        Views._renderDashboardTable(cands);
+      }
+      if (typeof Views._restoreDashboardFilterState === 'function') {
+        Views._restoreDashboardFilterState();
+      }
+
+      if (Views._dashboardSelectedCards && Views._dashboardSelectedCards.size > 0) {
+        if (typeof Views._applyDashboardCardFilter === 'function') {
+          Views._applyDashboardCardFilter();
+        }
+        if (Views._selectedBatchFilter && typeof Views._renderKpiSectionsWithBatchFilter === 'function') {
+          Views._renderKpiSectionsWithBatchFilter();
+        }
+      } else if (typeof Views._applyDashboardAllFilters === 'function') {
+        Views._applyDashboardAllFilters();
+      }
     },
 
     // ── DASHBOARD EXPORT ───────────────────────
