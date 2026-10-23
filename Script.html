@@ -412,6 +412,7 @@
       const overlay = document.getElementById('modal-overlay');
       if (!overlay) return;
       overlay.classList.remove('open');
+      Views._editingLocalPaths = null;
       setTimeout(() => { document.getElementById('modal-root').innerHTML = ''; }, 250);
     }
   };
@@ -2207,12 +2208,16 @@
         select.innerHTML = '';
         if (defaultOption) select.appendChild(defaultOption);
 
-        [...set].sort((a, b) => a.localeCompare(b)).forEach(val => {
+        const frag = document.createDocumentFragment(); // Offline container
+
+        [...set].sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' })).forEach(val => {
           const opt = document.createElement('option');
           opt.value = val;
           opt.textContent = val;
-          select.appendChild(opt);
+          frag.appendChild(opt); // Append to fragment (0 reflows)
         });
+
+        select.appendChild(frag); // Append all at once (1 single reflow)
       };
 
       // Populate Candidates Page Dropdowns
@@ -3444,7 +3449,7 @@
         </div>
       </div>
       <div class="modal__footer">
-        <button class="btn btn--outline" onclick="Modal.close(); Views._editingLocalPaths = [];">Cancel</button>
+        <button class="btn btn--outline" onclick="Modal.close(); Views._editingLocalPaths = null;">Cancel</button>
         <button class="btn btn--primary" id="edit-save-btn" onclick="Views._submitEditProfile('${candidateId}')">Save Changes</button>
       </div>`);
       Views._editingLocalPaths = (c.LocalServerPath || '').split('\n').map(p => p.trim()).filter(Boolean);
@@ -3460,7 +3465,7 @@
       Router.navigate('candidate-detail', { selectedCandidate: cand });
     },
 
-    _editingLocalPaths: [],
+    _editingLocalPaths: null,
 
     _renderLocalPaths(rawValue) {
       const paths = (rawValue || '').split('\n').map(p => p.trim()).filter(Boolean);
@@ -3493,7 +3498,7 @@
     _renderEditPathRows() {
       const el = document.getElementById('edit-local-paths-list');
       if (!el) return;
-      if (Views._editingLocalPaths.length === 0) {
+      if (!Views._editingLocalPaths || Views._editingLocalPaths.length === 0) {
         el.innerHTML = `<span style="color:var(--text-muted);font-size:.82rem">No paths added yet.</span>`;
         return;
       }
@@ -3509,6 +3514,7 @@
       const input = document.getElementById('edit-local-path-new');
       const value = input?.value?.trim();
       if (!value) { Toast.warning('Enter a path first.'); return; }
+      if (!Views._editingLocalPaths) Views._editingLocalPaths = [];
       if (Views._editingLocalPaths.includes(value)) { Toast.warning('That path is already in the list.'); return; }
       Views._editingLocalPaths.push(value);
       input.value = '';
@@ -3516,6 +3522,7 @@
     },
 
     _removeLocalPathRow(idx) {
+      if (!Views._editingLocalPaths) return;
       Views._editingLocalPaths.splice(idx, 1);
       Views._renderEditPathRows();
     },
@@ -3554,7 +3561,7 @@
           App.state.selectedCandidate.batchNumber = batchNumber;
         }
 
-        Views._editingLocalPaths = [];
+        Views._editingLocalPaths = null;
         Modal.close();
         Toast.success('Profile updated successfully!');
         Router.navigate('candidate-detail'); // Re-render detail view to show new values
@@ -5563,7 +5570,8 @@
 
         try {
           // Trigger browser download from base64
-          const byteChars = atob(res.base64);
+          const base64Data = res.base64 || res.data;
+          const byteChars = atob(base64Data);
           const byteNums = new Array(byteChars.length).fill(0).map((_, i) => byteChars.charCodeAt(i));
           const byteArr = new Uint8Array(byteNums);
           const blob = new Blob([byteArr], { type: 'application/zip' });

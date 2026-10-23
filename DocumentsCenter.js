@@ -407,7 +407,7 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       filesDownloaded: 0
     });
 
-    // ── Stage 5% → 65%: Download each file from Drive ─────────────────────
+    // ── Stage 5% → 65%: Download each file from Drive (Single RPC + Memory Buffer) ──
     var blobs = [];
     var uniqueCandidatesFound = {};
     var isSingleDocType = docTypes.length === 1;
@@ -430,43 +430,43 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
 
       if (fileId) {
         try {
-          var file = DriveApp.getFileById(fileId);
-          var size = file.getSize();
+          var blob = DriveApp.getFileById(fileId).getBlob(); // SINGLE RPC FETCH
+          var size = blob.getBytes().length; // Read size from memory
+          
           if (totalBytes + size > MAX_TOTAL_BYTES) {
-            throw new Error('Total files exceed Google\'s 9MB memory limit. Please select fewer candidates or document types for this batch.');
+            throw new Error('Total files exceed Google\'s 9MB memory limit. Please select fewer candidates.');
           }
           totalBytes += size;
-          var blob = file.getBlob();
           
           if (isSingleDocType) {
-            var cleanName = (doc.candidateName || 'Candidate').replace(/[\\/:*?"<>|]/g, '_').trim();
-            var ext = doc.fileName.indexOf('.') !== -1 ? doc.fileName.split('.').pop() : 'pdf';
+            var cleanName = (doc.candidateName || doc.CandidateName || 'Candidate').replace(/[\\/:*?"<>|]/g, '_').trim();
+            var ext = doc.fileName && doc.fileName.indexOf('.') !== -1 ? doc.fileName.split('.').pop() : 'pdf';
             var baseFileName = cleanName + '.' + ext;
             
             if (usedFileNames[baseFileName]) {
               usedFileNames[baseFileName]++;
-              baseFileName = cleanName + ' (' + doc.candidateId.slice(0, 6) + ').' + ext;
+              baseFileName = cleanName + ' (' + (doc.candidateId || '').slice(0, 6) + ').' + ext;
             } else {
               usedFileNames[baseFileName] = 1;
             }
             
-            blob.setName(baseFileName);
+            blobs.push(blob.setName(baseFileName));
           } else {
-            var safeCandName = doc.candidateName.replace(/[\/\\]/g, '_');
-            blob.setName(safeCandName + '/' + doc.docType + '_' + doc.fileName);
+            var safeCandName = (doc.candidateName || doc.CandidateName || 'Candidate').replace(/[\/\\]/g, '_');
+            var docName = doc.fileName || ((doc.docType || doc.DocType || 'Document') + '.pdf');
+            blobs.push(blob.setName(safeCandName + '/' + (doc.docType || doc.DocType) + '_' + docName));
           }
           
-          blobs.push(blob);
           uniqueCandidatesFound[doc.candidateId] = true;
         } catch (fileErr) {
           if (fileErr.message.includes('9MB memory limit')) throw fileErr;
-          Logger.log('Error getting file ' + fileId + ': ' + fileErr.message);
+          Logger.log('File error: ' + fileErr.message);
         }
       }
     }
 
     if (blobs.length === 0) {
-      var emptyErr = 'Unable to download any files from Google Drive. Please verify Drive file permissions and file links.';
+      var emptyErr = 'No downloadable files found.';
       setProgress_(batchId, { stage: 'error', percent: 0, message: emptyErr, filesFound: matchCount, filesDownloaded: 0 });
       return { success: false, error: emptyErr };
     }
@@ -480,11 +480,17 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       filesDownloaded: blobs.length
     });
 
-    var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    var zipName = isSingleDocType 
-      ? 'Mobilization_' + docTypes[0].replace(/\s+/g, '_') + '_' + dateStr + '.zip'
-      : 'Documents_' + dateStr + '.zip';
-    var zip     = Utilities.zip(blobs, zipName);
+    // 2. Aggressive V8 Garbage Collection for ZIP Process
+    var dateStr = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss');
+    var zipBaseName = isSingleDocType 
+      ? 'Mobilization_' + docTypes[0].replace(/\s+/g, '_') + '_' + dateStr
+      : 'Batch_Download_' + dateStr;
+    var zipName = zipBaseName + '.zip';
+    var downloadedCount = blobs.length;
+    var candidateCount = Object.keys(uniqueCandidatesFound).length;
+
+    var zip = Utilities.zip(blobs, zipName);
+    blobs = null; // Free up uncompressed blobs memory
 
     // ── Stage 78%: ZIP archive built, now encoding ─────────────────────────
     setProgress_(batchId, {
@@ -492,37 +498,14 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       percent: 78,
       message: 'ZIP archive ready — encoding for download…',
       filesFound: matchCount,
-      filesDownloaded: blobs.length
+      filesDownloaded: downloadedCount
     });
 
-    var base64  = Utilities.base64Encode(zip.getBytes());
+    var bytes = zip.getBytes();
+    zip = null; // Free up zip object memory
 
-    // ── Stage 85%: Encoding complete ──────────────────────────────────────
-    setProgress_(batchId, {
-      stage: 'encoding',
-      percent: 85,
-      message: 'Encoding complete — preparing download link…',
-      filesFound: matchCount,
-      filesDownloaded: blobs.length
-    });
-
-    // ── Stage 93%: Finalizing ─────────────────────────────────────────────
-    setProgress_(batchId, {
-      stage: 'finalizing',
-      percent: 93,
-      message: 'Finalizing your download…',
-      filesFound: matchCount,
-      filesDownloaded: blobs.length
-    });
-
-    // ── Stage 98%: Response assembled ─────────────────────────────────────
-    setProgress_(batchId, {
-      stage: 'finalizing',
-      percent: 98,
-      message: 'Download link ready!',
-      filesFound: matchCount,
-      filesDownloaded: blobs.length
-    });
+    var base64 = Utilities.base64Encode(bytes);
+    bytes = null; // Free up byte array memory
 
     // ── Stage 100%: Complete ──────────────────────────────────────────────
     setProgress_(batchId, {
@@ -530,15 +513,16 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
       percent: 100,
       message: 'Done!',
       filesFound: matchCount,
-      filesDownloaded: blobs.length
+      filesDownloaded: downloadedCount
     });
 
     return {
       success:        true,
-      filename:       zipName,
+      data:           base64,
       base64:         base64,
-      fileCount:      blobs.length,
-      candidateCount: Object.keys(uniqueCandidatesFound).length
+      filename:       zipName,
+      fileCount:      downloadedCount,
+      candidateCount: candidateCount
     };
 
   } catch (e) {
