@@ -2238,6 +2238,12 @@
       fill('dash-tb-status', statusSet);
       fill('dash-tb-nat', natSet);
       fill('dash-tb-batch', batchSet);
+
+      // Reveal any filter containers if marked with fouc-hidden
+      document.querySelectorAll('.fouc-hidden').forEach(el => {
+        el.classList.remove('fouc-hidden');
+        el.classList.add('fouc-ready');
+      });
     },
 
     _clearAllCandidateFilters() {
@@ -4658,7 +4664,7 @@
     ${detailedDocKpisHtml}
 
     <!-- Filter Panel (Premium Multi-Select 2026) -->
-    <div id="dc-filter-panel">
+    <div id="dc-filter-panel" class="fouc-hidden">
 
       <!-- Row 1: Search + Status + Excluded Status + Dept + Nationality + Batch -->
       <div class="filters-grid-2026">
@@ -4805,6 +4811,11 @@
         Views._dcPopulateFilterDropdowns();
         Views._dcRender();
         if (typeof Views._dcUpdateExpiryKpis === 'function') Views._dcUpdateExpiryKpis();
+        const filterContainer = document.getElementById('dc-filter-panel') || document.querySelector('.fouc-hidden');
+        if (filterContainer) {
+          filterContainer.classList.remove('fouc-hidden');
+          filterContainer.classList.add('fouc-ready');
+        }
         return;
       }
       const tbody = document.getElementById('dc-tbody');
@@ -4875,6 +4886,13 @@
         Views._dcPopulateFilterDropdowns();
         Views._dcUpdateStats(fixedRes.stats || {});
         Views._dcRender();
+
+        // ── Reveal filters after initialization (Prevent FOUC) ──
+        const filterContainer = document.getElementById('dc-filter-panel') || document.querySelector('.fouc-hidden');
+        if (filterContainer) {
+          filterContainer.classList.remove('fouc-hidden');
+          filterContainer.classList.add('fouc-ready');
+        }
       } catch (e) {
         console.error('Documents Center load error:', e);
         if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--danger);">Error loading candidates: ${e.message}<br><button class="btn btn--primary btn--sm" onclick="Views._dcLoad()" style="margin-top:12px;">Retry</button></td></tr>`;
@@ -4977,6 +4995,13 @@
         select.parentNode.insertBefore(wrapper, select.nextSibling);
         updateBtnText();
       });
+
+      // ── Reveal filter container after custom selects are built ──
+      const filterContainer = document.getElementById('dc-filter-panel') || document.querySelector('.fouc-hidden');
+      if (filterContainer) {
+        filterContainer.classList.remove('fouc-hidden');
+        filterContainer.classList.add('fouc-ready');
+      }
     },
 
     _dcPopulateFilterDropdowns() {

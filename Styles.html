@@ -2716,4 +2716,16 @@ body.dark-mode .settings-checkbox-label {
   body.dark-mode .filters-grid-2026 { background: #1a2234; border-color: #334155; }
   body.dark-mode .filters-grid-2026 + .filters-grid-2026 { background: #1e293b; }
   body.dark-mode .filter-label { color: #94a3b8; }
+
+  /* FOUC Prevention for Filters */
+  .fouc-hidden {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none;
+  }
+  .fouc-ready {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transition: opacity 0.5s ease-in-out;
+  }
 </style>
