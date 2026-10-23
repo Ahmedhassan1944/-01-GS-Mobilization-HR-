@@ -1,38 +1,35 @@
-### UI FIX: PREVENT FOUC (FLASH OF UNSTYLED CONTENT) ON FILTERS
+### STRICT ZERO-FOUC OVERRIDE (NATIVE SELECT HIDER)
 
-**Context:** The Document Center filter dropdowns exhibit FOUC, rendering as raw, expanded HTML `<select>` elements for ~4 seconds during data fetching before JS styling initializes.
-**Objective:** Act as a Principal Frontend Engineer. Hide the unstyled selects initially and fade them in smoothly ONLY after JavaScript has fully populated and initialized them.
+**Context:** The previous fix didn't prevent the intermediate paint of the raw HTML `<select>` elements, causing a 3-stage visual glitch (blank -> ugly native -> modern UI). The user wants the native shape to NEVER appear.
+**Objective:** Act as a Principal UI Engineer. Permanently hide the native `<select>` tags in the DOM via CSS so the browser never paints them, allowing only the final custom JavaScript UI to be visible.
 
-#### FIX 1: Add CSS State Classes (`Styles.html`)
-Open `Styles.html` and append these classes to handle the hiding and smooth fading:
+#### FIX 1: Strict Native Select Override (`Styles.html`)
+Locate `Styles.html` (or your main CSS block) and inject this CSS. Remove the old `.fouc-hidden` logic as it was hiding the parent container.
+
 ```css
-/* FOUC Prevention for Filters */
-.fouc-hidden {
+/* 1. Permanently hide raw native selects in the filter area to prevent FOUC */
+/* Adjust the container class/id if your filters are inside a specific wrapper like #documents-center or .filter-row */
+select[multiple], 
+.filter-container select,
+#dc-view select {
     opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none;
-}
-.fouc-ready {
-    opacity: 1 !important;
-    visibility: visible !important;
-    transition: opacity 0.5s ease-in-out;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    z-index: -9999 !important;
+    pointer-events: none !important;
 }
 
-FIX 2: Apply Initial Hidden State (Index.html / Script.html)
-
-Locate the container holding the filters (e.g., the row containing the search bar and the 8 dropdowns).
-
-    Add the class fouc-hidden to the main filter wrapper/container in the HTML so it starts completely invisible.
-
-FIX 3: Reveal After Initialization (Script.html)
-
-Locate the function responsible for loading the Document Center and populating the dropdowns (e.g., Views._dcLoad, Views._populateCandidateFilterDropdowns, or Views._initPremiumMultiSelects).
-At the very end of the .then() block (after the data is fetched, dropdowns are filled, and custom select UI is built), remove the hidden class and add the ready class:
-
-// Add this at the very end of the filter initialization logic:
-const filterContainer = document.querySelector('.fouc-hidden'); // Or use the specific container ID
-if (filterContainer) {
-    filterContainer.classList.remove('fouc-hidden');
-    filterContainer.classList.add('fouc-ready');
+/* 2. Optional: Add a smooth skeleton background to the containers while JS is building the modern UI */
+.custom-select-wrapper:empty {
+    min-height: 40px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    animation: pulseSkeleton 1.5s infinite ease-in-out;
 }
-Execution: Apply this CSS/JS combo. Save and push.
+
+@keyframes pulseSkeleton {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}

@@ -2717,15 +2717,34 @@ body.dark-mode .settings-checkbox-label {
   body.dark-mode .filters-grid-2026 + .filters-grid-2026 { background: #1e293b; }
   body.dark-mode .filter-label { color: #94a3b8; }
 
-  /* FOUC Prevention for Filters */
-  .fouc-hidden {
+  /* 1. Permanently hide raw native selects in the filter area to prevent FOUC */
+  select[multiple], 
+  .upgrade-multiselect,
+  .filter-container select,
+  .filter-col select.upgrade-multiselect,
+  #dc-filter-panel select,
+  #dc-view select {
     opacity: 0 !important;
-    visibility: hidden !important;
-    pointer-events: none;
+    position: absolute !important;
+    width: 0 !important;
+    height: 0 !important;
+    z-index: -9999 !important;
+    pointer-events: none !important;
+    overflow: hidden !important;
   }
-  .fouc-ready {
-    opacity: 1 !important;
-    visibility: visible !important;
-    transition: opacity 0.5s ease-in-out;
+
+  /* 2. Optional: Add a smooth skeleton background to the containers while JS is building the modern UI */
+  .custom-select-wrapper:empty,
+  .filter-col:has(select.upgrade-multiselect:only-child) {
+    min-height: 40px;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+    background-size: 200% 100%;
+    animation: pulseSkeleton 1.5s infinite ease-in-out;
+  }
+
+  @keyframes pulseSkeleton {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
   }
 </style>
