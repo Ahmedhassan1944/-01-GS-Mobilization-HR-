@@ -545,6 +545,134 @@ function api_batchDownloadZip(candidateIdsJson, docTypesJson, batchId) {
 }
 
 /**
+ * Handles massive chunked document exports to Google Drive.
+ * Organizes files into subfolders per candidate.
+ * Bypasses Apps Script 6-minute execution limits and memory boundaries across client roundtrips.
+ *
+ * @param {string} candidateIdsJson - JSON string of candidate IDs for this chunk.
+ * @param {string} docTypesJson     - JSON string of document types to export.
+ * @param {string} existingFolderId - Existing Drive folder ID to append to (carried across chunks).
+ * @param {string} batchId          - Unique batch identifier.
+ * @returns {object} { success: boolean, folderId: string, folderUrl: string }
+ */
+function api_massiveDriveExport(candidateIdsJson, docTypesJson, existingFolderId, batchId) {
+  try {
+    const auth = typeof requireRole_ === 'function' ? requireRole_(['Admin', 'HR']) : { authorized: true };
+    if (!auth.authorized) return { success: false, error: auth.error };
+
+    var candidateIds = [];
+    var docTypes = [];
+    try {
+      candidateIds = typeof candidateIdsJson === 'string' ? JSON.parse(candidateIdsJson || '[]') : (candidateIdsJson || []);
+      docTypes = typeof docTypesJson === 'string' ? JSON.parse(docTypesJson || '[]') : (docTypesJson || []);
+    } catch (parseErr) {
+      return { success: false, error: 'Invalid criteria: ' + parseErr.message };
+    }
+
+    if (!Array.isArray(candidateIds) || !candidateIds.length || !Array.isArray(docTypes) || !docTypes.length) {
+      return { success: false, error: 'No criteria selected.' };
+    }
+
+    // 1. Resolve or Create Root Export Folder
+    var rootFolder = DriveApp.getRootFolder();
+    var exportFolder;
+    if (existingFolderId) {
+      exportFolder = DriveApp.getFolderById(existingFolderId);
+    } else {
+      var exportFolderName = 'HR_Export_' + (batchId || 'Bulk') + '_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmm');
+      exportFolder = rootFolder.createFolder(exportFolderName);
+    }
+
+    // Build Candidate Name mapping
+    var candidateMap = {};
+    try {
+      var ss = typeof getSpreadsheet_ === 'function' ? getSpreadsheet_() : SpreadsheetApp.openById(PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID'));
+      var cSheet = ss.getSheetByName('tbl_Candidates');
+      if (cSheet) {
+        var cData = cSheet.getDataRange().getValues();
+        var cHeaders = cData[0] || [];
+        var cIdIdx = cHeaders.indexOf('CandidateID');
+        var cNameIdx = cHeaders.indexOf('FullName');
+        for (var c = 1; c < cData.length; c++) {
+          var cid = (cData[c][cIdIdx] || '').toString().trim();
+          var cname = (cData[c][cNameIdx] || '').toString().trim();
+          if (cid) candidateMap[cid] = cname || cid;
+        }
+      }
+    } catch (e) {
+      Logger.log('Warning loading candidateMap: ' + e.message);
+    }
+
+    // 2. Fetch and Filter Documents
+    var allDocsRes = typeof api_getAllDocuments === 'function' ? api_getAllDocuments() : { success: false };
+    var allDocs = (allDocsRes && allDocsRes.data) ? allDocsRes.data : [];
+
+    var normCandIds = candidateIds.map(function(id) { return String(id).trim(); });
+    var normDocTypes = docTypes.map(function(t) { return String(t).trim().toLowerCase(); });
+
+    var matchedDocs = allDocs.filter(function(d) {
+      var cId = String(d.CandidateID || d.candidateId || '').trim();
+      var type = String(d.DocType || d.docType || '').trim().toLowerCase();
+      var isAvail = typeof isDocumentAvailable_ === 'function'
+        ? isDocumentAvailable_({ DocumentID: d.DocumentID || d.documentId, ApprovalStatus: d.ApprovalStatus || d.approvalStatus })
+        : true;
+      return normCandIds.indexOf(cId) !== -1 && normDocTypes.indexOf(type) !== -1 && isAvail;
+    }).map(function(d) {
+      var cId = String(d.CandidateID || d.candidateId || '').trim();
+      var candName = d.CandidateName || candidateMap[cId] || cId;
+      var docType = d.DocType || d.docType || 'Document';
+      var fileUrl = d.fileUrl || d.FileURL || '';
+      return {
+        CandidateID: cId,
+        CandidateName: candName,
+        DocType: docType,
+        FileName: d.FileName || d.fileName || (docType + '.pdf'),
+        fileUrl: fileUrl
+      };
+    });
+
+    // 3. Group by Candidate Name for Subfolders
+    var candidatesMap = {};
+    matchedDocs.forEach(function(d) {
+      var key = d.CandidateName || d.CandidateID;
+      if (!candidatesMap[key]) candidatesMap[key] = [];
+      candidatesMap[key].push(d);
+    });
+
+    // 4. Create Subfolders & Copy Files
+    for (var candName in candidatesMap) {
+      var cleanFolderName = candName.replace(/[\\/:*?"<>|]/g, '_').trim() || 'Candidate';
+      var subFolder = null;
+      var existingSub = exportFolder.getFoldersByName(cleanFolderName);
+      if (existingSub.hasNext()) {
+        subFolder = existingSub.next();
+      } else {
+        subFolder = exportFolder.createFolder(cleanFolderName);
+      }
+
+      var cDocs = candidatesMap[candName];
+      for (var i = 0; i < cDocs.length; i++) {
+        var fileId = extractFileId_(cDocs[i].fileUrl);
+        if (fileId) {
+          try {
+            var file = DriveApp.getFileById(fileId);
+            var safeName = (cDocs[i].CandidateName + '_' + cDocs[i].DocType).replace(/[\\/:*?"<>|]/g, '_');
+            file.makeCopy(safeName, subFolder);
+          } catch (e) {
+            Logger.log('Copy error for ' + candName + ': ' + e.message);
+          }
+        }
+      }
+    }
+
+    return { success: true, folderId: exportFolder.getId(), folderUrl: exportFolder.getUrl() };
+  } catch (err) {
+    Logger.log('Error in api_massiveDriveExport: ' + err.message + '\n' + err.stack);
+    return { success: false, error: err.message };
+  }
+}
+
+/**
  * Return the information needed to preview a specific document for a candidate.
  */
 function api_getDocumentPreviewInfo(candidateId, docType) {

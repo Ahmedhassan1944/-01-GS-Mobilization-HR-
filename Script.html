@@ -302,6 +302,7 @@
         }
         return { success: true, settings: App.state.settings };
       }
+      if (fnName === 'api_massiveDriveExport') return { success: true, folderId: 'mock-folder-' + Date.now(), folderUrl: 'https://drive.google.com' };
       if (fnName === 'api_getAllDocuments') return { success: true, data: documents };
       if (fnName === 'api_getAllCandidates') return { success: true, data: candidates };
       if (fnName === 'api_createCandidate') return { success: true, candidateId: 'new-' + Date.now() };
@@ -5510,136 +5511,80 @@
       if (candidateIds.length === 0) { Toast.show('Select at least one candidate.', 'warning'); return; }
       if (docTypes.length === 0) { Toast.show('Select at least one document type.', 'warning'); return; }
 
-      if (docTypes.length === 1) {
-        Toast.show('Single document selected: Files will be downloaded flat named by candidate full name.', 'info');
-      }
-
-      // ── Generate a unique batch ID for progress tracking ──
-      const batchId = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-
-      // ── Show and reset Progress UI ──
-      Views._dcShowProgress();
+      const candIds = candidateIds;
+      const docs = docTypes;
+      const batchName = `${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 
       const btn = document.getElementById('btn-download-zip') || document.getElementById('dc-download-btn');
       if (btn) btn.disabled = true;
 
-      // ── Start progress polling interval (500ms) ──
-      let pollInterval = null;
+      const maxPossibleFiles = candIds.length * docs.length;
 
-      const stopPolling = () => {
-        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-      };
+      if (maxPossibleFiles > 12) {
+        // MASSIVE CHUNKED EXPORT MODE (Bypasses 6-minute limit & builds subfolders)
+        try {
+          let folderId = null;
+          let folderUrl = null;
+          const chunkSize = 5; // Process exactly 5 candidates per roundtrip
 
-      // Store cancel flag so _dcCancelDownload can set it
-      Views._dcDownloadState = { cancelled: false, stopPolling };
+          for (let i = 0; i < candIds.length; i += chunkSize) {
+            const chunk = candIds.slice(i, i + chunkSize);
+            
+            // Update UI Progress dynamically
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Exporting ${Math.min(i + chunkSize, candIds.length)}/${candIds.length} Candidates...`;
+            
+            const res = await GAS.call('api_massiveDriveExport', JSON.stringify(chunk), JSON.stringify(docs), folderId, batchName);
+            if (!res || !res.success) throw new Error(res?.error || 'Chunk export failed');
+            
+            // Carry over the folder ID for the next chunk
+            folderId = res.folderId;
+            folderUrl = res.folderUrl;
+          }
 
-      const pollProgress = () => {
-        if (Views._dcDownloadState && Views._dcDownloadState.cancelled) {
-          stopPolling();
+          Router.clearIntervals();
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
+          window.open(folderUrl, '_blank');
+          App.showToast('Export complete! Files organized into subfolders.', 'success');
+          return; 
+        } catch (err) {
+          Router.clearIntervals();
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
+          App.showToast('Export failed: ' + err.message, 'error');
           return;
         }
-        if (typeof google === 'undefined' || !google.script || !google.script.run) return;
-
-        google.script.run
-          .withSuccessHandler(prog => {
-            if (!prog || (Views._dcDownloadState && Views._dcDownloadState.cancelled)) return;
-            if (prog.stage === 'error') {
-              stopPolling();
-              Views._dcProgressError(prog.message || 'Error occurred during ZIP creation.');
-              return;
-            }
-            Views._dcUpdateProgressUI(prog);
-          })
-          .withFailureHandler(err => {
-            console.warn('[DC] Progress polling warning:', err);
-          })
-          .api_getBatchDownloadProgress(batchId);
-      };
-
-      // Small initial delay so backend has time to write Stage 0 to cache
-      setTimeout(() => {
-        if (Views._dcDownloadState && !Views._dcDownloadState.cancelled) {
-          pollInterval = setInterval(pollProgress, 500);
-          Router.registerInterval(pollInterval);
-          Views._dcDownloadState.stopPolling = stopPolling;
-        }
-      }, 500);
-
-      const handleZipSuccess = res => {
-        stopPolling();
-        if (typeof Router !== 'undefined' && Router.clearIntervals) Router.clearIntervals();
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
-        }
-        Views._dcUpdateDownloadBtn();
-
-        if (res && res.success) {
-          if (res.mode === 'drive_link') {
-            // Open the Google Drive Folder in a new tab
-            window.open(res.url, '_blank');
-            const msg = 'Massive batch detected! Exported to a Drive folder for native downloading.';
-            Views._dcProgressSuccess(msg);
-            App.showToast(msg, 'success');
-          } else if (res.mode === 'base64' || res.data || res.base64) {
-            // Normal base64 direct download
-            try {
-              const base64Data = res.data || res.base64;
-              const link = document.createElement('a');
-              link.href = 'data:application/zip;base64,' + base64Data;
-              link.download = res.filename || `Documents_${batchId}.zip`;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-
-              // ── Show success state in Progress UI ──
-              Views._dcProgressSuccess(
-                res.fileCount ? `✅ Downloaded ${res.fileCount} file(s) for ${res.candidateCount || ''} candidate(s).` : 'Download complete.'
-              );
-              App.showToast('Download complete.', 'success');
-            } catch (dlErr) {
-              Views._dcProgressError('Failed to assemble download file: ' + dlErr.message);
-              App.showToast('Failed to assemble download file: ' + dlErr.message, 'error');
-            }
-          }
-        } else {
-          const errMsg = (res && res.error) ? res.error : 'Unknown error';
-          Views._dcProgressError('Download failed: ' + errMsg);
-          App.showToast('Download failed: ' + errMsg, 'error');
-        }
-      };
-
-      const handleZipFailure = err => {
-        stopPolling();
-        if (typeof Router !== 'undefined' && Router.clearIntervals) Router.clearIntervals();
-        const msg = (err && (err.message || err.toString())) || 'Server error during ZIP creation.';
-        Views._dcProgressError(msg);
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
-        }
-        Views._dcUpdateDownloadBtn();
-        App.showToast('Download failed: ' + msg, 'error');
-      };
-
-      try {
-        if (typeof google !== 'undefined' && google.script && google.script.run) {
-          google.script.run
-            .withSuccessHandler(handleZipSuccess)
-            .withFailureHandler(handleZipFailure)
-            .api_batchDownloadZip(JSON.stringify(candidateIds), JSON.stringify(docTypes), batchId);
-        } else {
-          // Offline / Local mock preview fallback
-          const res = await GAS.call('api_batchDownloadZip',
-            JSON.stringify(candidateIds),
-            JSON.stringify(docTypes),
-            batchId
-          );
-          handleZipSuccess(res);
-        }
-      } catch (e) {
-        handleZipFailure(e);
       }
+
+      // BASE64 ZIP FALLBACK (For <= 12 files)
+      btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Zipping...';
+      GAS.call('api_batchDownloadZip', JSON.stringify(candIds), JSON.stringify(docs), batchName)
+        .then(res => {
+          Router.clearIntervals();
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
+
+          if (res && res.success) {
+            if (res.mode === 'drive_link') {
+              window.open(res.url, '_blank');
+              App.showToast('Exported to Google Drive successfully.', 'success');
+            } else {
+              const link = document.createElement('a');
+              link.href = 'data:application/zip;base64,' + (res.data || res.base64);
+              link.download = res.filename || `Batch_${batchName}.zip`;
+              link.click();
+              App.showToast('Download complete.', 'success');
+            }
+          } else {
+            App.showToast('Download failed: ' + (res ? res.error : 'Unknown error'), 'error');
+          }
+        })
+        .catch(err => {
+          Router.clearIntervals();
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
+          App.showToast('Download error: ' + err.message, 'error');
+        });
     },
 
     // ── Progress UI helpers ───────────────────────────────────────────────────
