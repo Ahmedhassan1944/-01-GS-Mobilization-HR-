@@ -128,6 +128,12 @@
       return [...sb, ...kb];
     },
 
+    showToast(msg, type = 'default') {
+      if (typeof Toast !== 'undefined' && Toast.show) {
+        Toast.show(msg, type);
+      }
+    },
+
     setState(partial) {
       Object.assign(this.state, partial);
     },
@@ -5561,48 +5567,59 @@
 
       const handleZipSuccess = res => {
         stopPolling();
-        if (!res || !res.success) {
-          Views._dcProgressError(res?.error || 'Batch ZIP generation failed.');
-          if (btn) btn.disabled = false;
-          Views._dcUpdateDownloadBtn();
-          return;
+        if (typeof Router !== 'undefined' && Router.clearIntervals) Router.clearIntervals();
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
         }
+        Views._dcUpdateDownloadBtn();
 
-        try {
-          // Trigger browser download from base64
-          const base64Data = res.base64 || res.data;
-          const byteChars = atob(base64Data);
-          const byteNums = new Array(byteChars.length).fill(0).map((_, i) => byteChars.charCodeAt(i));
-          const byteArr = new Uint8Array(byteNums);
-          const blob = new Blob([byteArr], { type: 'application/zip' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = res.filename || `Documents_${batchId}.zip`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+        if (res && res.success) {
+          if (res.mode === 'drive_link') {
+            // Open the Google Drive Folder in a new tab
+            window.open(res.url, '_blank');
+            const msg = 'Massive batch detected! Exported to a Drive folder for native downloading.';
+            Views._dcProgressSuccess(msg);
+            App.showToast(msg, 'success');
+          } else if (res.mode === 'base64' || res.data || res.base64) {
+            // Normal base64 direct download
+            try {
+              const base64Data = res.data || res.base64;
+              const link = document.createElement('a');
+              link.href = 'data:application/zip;base64,' + base64Data;
+              link.download = res.filename || `Documents_${batchId}.zip`;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
 
-          // ── Show success state in Progress UI ──
-          Views._dcProgressSuccess(
-            `✅ Downloaded ${res.fileCount} file(s) for ${res.candidateCount} candidate(s).`
-          );
-          Toast.show(`✅ Downloaded ${res.fileCount} files for ${res.candidateCount} candidates.`, 'success');
-        } catch (dlErr) {
-          Views._dcProgressError('Failed to assemble download file: ' + dlErr.message);
-        } finally {
-          if (btn) btn.disabled = false;
-          Views._dcUpdateDownloadBtn();
+              // ── Show success state in Progress UI ──
+              Views._dcProgressSuccess(
+                res.fileCount ? `✅ Downloaded ${res.fileCount} file(s) for ${res.candidateCount || ''} candidate(s).` : 'Download complete.'
+              );
+              App.showToast('Download complete.', 'success');
+            } catch (dlErr) {
+              Views._dcProgressError('Failed to assemble download file: ' + dlErr.message);
+              App.showToast('Failed to assemble download file: ' + dlErr.message, 'error');
+            }
+          }
+        } else {
+          const errMsg = (res && res.error) ? res.error : 'Unknown error';
+          Views._dcProgressError('Download failed: ' + errMsg);
+          App.showToast('Download failed: ' + errMsg, 'error');
         }
       };
 
       const handleZipFailure = err => {
         stopPolling();
+        if (typeof Router !== 'undefined' && Router.clearIntervals) Router.clearIntervals();
         const msg = (err && (err.message || err.toString())) || 'Server error during ZIP creation.';
         Views._dcProgressError(msg);
-        if (btn) btn.disabled = false;
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
+        }
         Views._dcUpdateDownloadBtn();
+        App.showToast('Download failed: ' + msg, 'error');
       };
 
       try {
