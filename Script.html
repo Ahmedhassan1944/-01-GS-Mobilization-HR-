@@ -4578,8 +4578,32 @@
   ${renderStatTable('Visa Status', stats.visa, '#f59e0b')}
 </div>`;
 
-      const dynamicStatusOptions = '<option value="">All Statuses</option>' + 
-        (App.state.settings?.statuses || []).map(s => `<option value="${s}">${s}</option>`).join('');
+      const statusesList = (App.state.settings?.statuses && App.state.settings.statuses.length > 0)
+        ? App.state.settings.statuses
+        : ['New', 'Under Review', 'Medical Examination', 'Visa Stamping', 'Mobilized', 'Closed'];
+
+      const deptsList = (App.state.settings?.departments && App.state.settings.departments.length > 0)
+        ? App.state.settings.departments
+        : ['Projects', 'Maintenance', 'Finance', 'HR', 'Operations', 'IT', 'Safety'];
+
+      const natsList = (App.state.settings?.nationalities && App.state.settings.nationalities.length > 0)
+        ? App.state.settings.nationalities
+        : ['Egyptian', 'Sudanese', 'Jordanian', 'Saudi', 'Yemeni', 'Moroccan', 'Other'];
+
+      const batchesList = Array.from(new Set([
+        ...(App.getAllBatches ? App.getAllBatches() : []),
+        ...(App.state.settings?.staffBatches || []),
+        ...(App.state.settings?.kalhatBatches || []),
+        ...(App.state.documentsCenter?.candidates || []).map(c => Views._getBatchValue(c)).filter(Boolean)
+      ])).filter(Boolean).sort();
+
+      const docExpiryOpts = [
+        { value: 'missing', text: 'Missing', dot: '#94a3b8' },
+        { value: 'nodate',  text: 'Date Not Set', dot: '#cbd5e1' },
+        { value: 'expired', text: 'Expired', dot: '#ef4444' },
+        { value: 'exp30',   text: 'Expiring (≤ 30 Days)', dot: '#f97316' },
+        { value: 'exp180',  text: 'Expiring (≤ 6 Months)', dot: '#3b82f6' }
+      ];
 
       container.innerHTML = `
     <div class="page-header">
@@ -4657,7 +4681,7 @@
 
     ${detailedDocKpisHtml}
 
-    <!-- Filter Panel (Premium Multi-Select 2026) -->
+    <!-- Filter Panel (Enterprise Multi-Select 2026) -->
     <div id="dc-filter-panel">
 
       <!-- Row 1: Search + Status + Excluded Status + Dept + Nationality + Batch -->
@@ -4665,79 +4689,25 @@
         <div class="filter-col" style="min-width:200px; flex:2;">
           <label class="filter-label" for="dc-search">🔍 Search</label>
           <input type="search" class="form-control form-control--sm" placeholder="Name, Position, HR Code…"
-            id="dc-search" style="width:100%; height:36px;" oninput="Views._dcOnSearchInput(this.value)">
+            id="dc-search" style="width:100%; height:36px;" oninput="Views._dcOnSearchInput(this.value)"
+            onkeydown="if(event.key==='Enter') Views._dcApplyFilters()">
         </div>
-        <div class="filter-col">
-          <label class="filter-label">📋 Status</label>
-          <select id="dc-filter-status" multiple class="upgrade-multiselect">
-            ${dynamicStatusOptions}
-          </select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label" style="color:#ef4444;">🚫 Excluded Status</label>
-          <select id="dc-filter-status-exclude" multiple class="upgrade-multiselect">
-            ${dynamicStatusOptions}
-          </select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label">🏢 Department</label>
-          <select id="dc-filter-dept" multiple class="upgrade-multiselect"></select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label">🌍 Nationality</label>
-          <select id="dc-filter-nat" multiple class="upgrade-multiselect"></select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label">📦 Batch</label>
-          <select id="dc-filter-batch" multiple class="upgrade-multiselect"></select>
-        </div>
+        ${Views._renderDcMultiSelectHtml('dc-filter-status', 'Status', '📋', statusesList)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-status-exclude', 'Excluded Status', '🚫', statusesList, false, true)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-dept', 'Department', '🏢', deptsList)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-nat', 'Nationality', '🌍', natsList)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-batch', 'Batch', '📦', batchesList, true)}
       </div>
 
       <!-- Row 2: Document Expiry Filters + Action Buttons -->
       <div class="filters-grid-2026">
-        <div class="filter-col">
-          <label class="filter-label" style="color:#3b82f6;">🛂 Passport</label>
-          <select id="dc-filter-passport" multiple class="upgrade-multiselect">
-            <option value="missing">Missing</option>
-            <option value="nodate">Date Not Set</option>
-            <option value="expired">Expired</option>
-            <option value="exp30">Expiring (&lt;= 30 Days)</option>
-            <option value="exp180">Expiring (&lt;= 6 Months)</option>
-          </select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label" style="color:#10b981;">🩺 Med Exam</label>
-          <select id="dc-filter-medexam" multiple class="upgrade-multiselect">
-            <option value="missing">Missing</option>
-            <option value="nodate">Date Not Set</option>
-            <option value="expired">Expired</option>
-            <option value="exp30">Expiring (&lt;= 30 Days)</option>
-            <option value="exp180">Expiring (&lt;= 6 Months)</option>
-          </select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label" style="color:#8b5cf6;">🩸 Med Analysis</label>
-          <select id="dc-filter-medanalysis" multiple class="upgrade-multiselect">
-            <option value="missing">Missing</option>
-            <option value="nodate">Date Not Set</option>
-            <option value="expired">Expired</option>
-            <option value="exp30">Expiring (&lt;= 30 Days)</option>
-            <option value="exp180">Expiring (&lt;= 6 Months)</option>
-          </select>
-        </div>
-        <div class="filter-col">
-          <label class="filter-label" style="color:#f59e0b;">✈️ Visa</label>
-          <select id="dc-filter-visa" multiple class="upgrade-multiselect">
-            <option value="missing">Missing</option>
-            <option value="nodate">Date Not Set</option>
-            <option value="expired">Expired</option>
-            <option value="exp30">Expiring (&lt;= 30 Days)</option>
-            <option value="exp180">Expiring (&lt;= 6 Months)</option>
-          </select>
-        </div>
+        ${Views._renderDcMultiSelectHtml('dc-filter-passport', 'Passport', '🛂', docExpiryOpts)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-medexam', 'Med Exam', '🩺', docExpiryOpts)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-medanalysis', 'Med Analysis', '🩸', docExpiryOpts)}
+        ${Views._renderDcMultiSelectHtml('dc-filter-visa', 'Visa', '✈️', docExpiryOpts, true)}
         <div class="filter-col" style="display:flex; gap:8px; justify-content:flex-end; align-items:flex-end; flex:0 0 auto;">
-          <button class="btn btn--outline btn--sm" onclick="Views._dcClearFilters()" style="height:36px; white-space:nowrap;">✕ Clear</button>
-          <button class="btn btn--primary btn--sm" onclick="Views._dcApplyFilters()" style="height:36px; white-space:nowrap;">✅ Apply Filters</button>
+          <button type="button" class="btn btn--outline btn--sm" onclick="Views._dcClearFilters()" style="height:36px; white-space:nowrap;">✕ Clear</button>
+          <button type="button" class="btn btn--primary btn--sm" onclick="Views._dcApplyFilters()" style="height:36px; white-space:nowrap;">✅ Apply Filters</button>
         </div>
       </div>
     </div>
@@ -4794,6 +4764,9 @@
       </div>
     </div>
     `;
+
+      // Initialize dropdown listeners
+      Views._initDcMultiSelectListeners();
 
       // Load data if not already loaded
       Views._dcLoad();
@@ -4895,101 +4868,205 @@
     },
 
     /**
-     * _initPremiumMultiSelects
-     * Upgrades every <select class="upgrade-multiselect"> inside dc-filter-panel
-     * into a custom checkbox-dropdown. Idempotent — skips already-upgraded selects.
+     * _renderDcMultiSelectHtml
+     * Renders a complete enterprise multi-select filter control immediately into the view template
+     * ensuring zero FOUC, zero layout shift, and instant paint on Frame 0.
      */
-    _initPremiumMultiSelects() {
-      // 1. Attach global listener ONLY ONCE to prevent memory leaks
-      if (!window._premiumSelectListenerAttached) {
-        document.addEventListener('click', (e) => {
-          document.querySelectorAll('.premium-multiselect.open').forEach(wrapper => {
-            if (!wrapper.contains(e.target)) wrapper.classList.remove('open');
-          });
-        });
-        window._premiumSelectListenerAttached = true;
-      }
-
-      const panel = document.getElementById('dc-filter-panel');
-      if (!panel) return;
-
-      // 2. Loop through selects
-      panel.querySelectorAll('select.upgrade-multiselect').forEach(select => {
-        if (select.dataset.upgraded) return; // Already upgraded — skip
-        select.dataset.upgraded = 'true';
-        select.style.display = 'none';
-
-        const wrapper = document.createElement('div');
-        wrapper.className = 'premium-multiselect';
-
-        const btn = document.createElement('div');
-        btn.className = 'premium-multiselect-btn';
-        btn.setAttribute('role', 'button');
-        btn.setAttribute('aria-haspopup', 'listbox');
-        btn.innerHTML = '<span>All</span><span style="font-size:10px; color:#94a3b8;">&#9660;</span>';
-
-        const dropdown = document.createElement('div');
-        dropdown.className = 'premium-multiselect-dropdown';
-        dropdown.setAttribute('role', 'listbox');
-
-        btn.addEventListener('click', () => {
-          const isOpen = wrapper.classList.contains('open');
-          // Close all others
-          document.querySelectorAll('.premium-multiselect.open').forEach(w => w.classList.remove('open'));
-          if (!isOpen) wrapper.classList.add('open');
-        });
-
-        const updateBtnText = () => {
-          const selected = Array.from(select.selectedOptions);
-          const lbl = btn.querySelector('span');
-          if (!lbl) return;
-          if (selected.length === 0) {
-            lbl.innerText = 'All';
-          } else if (selected.length === 1) {
-            lbl.innerText = selected[0].text;
-          } else {
-            lbl.innerText = `${selected.length} Selected`;
-          }
-        };
-
-        Array.from(select.options).forEach(opt => {
-          const row = document.createElement('label');
-          row.className = 'premium-multiselect-option';
-          row.setAttribute('role', 'option');
-
-          const chk = document.createElement('input');
-          chk.type = 'checkbox';
-          chk.value = opt.value;
-          chk.checked = opt.selected;
-          chk.addEventListener('change', () => {
-            opt.selected = chk.checked;
-            updateBtnText();
-          });
-
-          row.appendChild(chk);
-          row.appendChild(document.createTextNode(opt.text));
-          dropdown.appendChild(row);
-        });
-
-        wrapper.appendChild(btn);
-        wrapper.appendChild(dropdown);
-        // Insert the custom wrapper right after the hidden <select>
-        select.parentNode.insertBefore(wrapper, select.nextSibling);
-        updateBtnText();
+    _renderDcMultiSelectHtml(id, label, icon, options, alignRight = false, isExclude = false) {
+      const opts = (options || []).map(opt => {
+        if (typeof opt === 'object' && opt !== null) return opt;
+        return { value: String(opt), text: String(opt) };
       });
+
+      return `
+        <div class="filter-col">
+          <label class="filter-label" ${isExclude ? 'style="color:#ef4444;"' : ''}>${icon} ${escHtml(label)}</label>
+          <div class="dc-multiselect ${alignRight ? 'align-right' : ''}" id="dc-ms-${id}">
+            <button type="button" class="dc-multiselect-btn" id="dc-btn-${id}" onclick="Views._dcToggleMs(event, '${id}')" aria-haspopup="listbox" aria-expanded="false">
+              <span class="dc-ms-btn-content" id="dc-lbl-${id}"><span class="dc-ms-placeholder">All</span></span>
+              <svg class="dc-ms-chevron" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 7.5L10 12.5L15 7.5"/></svg>
+            </button>
+            <div class="dc-multiselect-menu" id="dc-menu-${id}" role="listbox" onclick="event.stopPropagation()">
+              <div class="dc-ms-header">
+                <input type="search" class="dc-ms-search-input" placeholder="Search ${escHtml(label)}…" oninput="Views._dcMsSearch('${id}', this.value)" autocomplete="off">
+                <div class="dc-ms-actions">
+                  <button type="button" class="dc-ms-action-btn" onclick="Views._dcMsSelectAll('${id}')">Select All</button>
+                  <button type="button" class="dc-ms-action-btn clear-btn" onclick="Views._dcMsClearAll('${id}')">Clear</button>
+                </div>
+              </div>
+              <div class="dc-ms-list" id="dc-list-${id}">
+                ${opts.map(opt => {
+                  const dot = opt.dot ? `<span class="dc-ms-dot" style="background:${opt.dot};"></span>` : '';
+                  return `<label class="dc-ms-option" data-val="${escHtml(opt.value)}" title="${escHtml(opt.text)}">
+                    <input type="checkbox" value="${escHtml(opt.value)}" onchange="Views._dcOnMsCheckChange('${id}', this)">
+                    ${dot}
+                    <span class="dc-ms-opt-text">${escHtml(opt.text)}</span>
+                  </label>`;
+                }).join('')}
+              </div>
+              <div class="dc-ms-footer">
+                <span class="dc-ms-footer-count" id="dc-count-${id}">0 selected</span>
+                <button type="button" class="dc-ms-done-btn" onclick="Views._dcMsCloseAll()">Done</button>
+              </div>
+            </div>
+            <!-- Hidden native select for 100% backward compatibility with filter and export logic -->
+            <select id="${id}" multiple style="display:none;" aria-hidden="true">
+              ${opts.map(opt => `<option value="${escHtml(opt.value)}">${escHtml(opt.text)}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+      `;
+    },
+
+    _initDcMultiSelectListeners() {
+      if (window._dcMsListenerAttached) return;
+      document.addEventListener('click', (e) => {
+        if (!e.target.closest('.dc-multiselect')) {
+          Views._dcMsCloseAll();
+        }
+      });
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') Views._dcMsCloseAll();
+      });
+      window._dcMsListenerAttached = true;
+    },
+
+    _dcToggleMs(event, id) {
+      if (event) event.stopPropagation();
+      Views._initDcMultiSelectListeners();
+      const wrapper = document.getElementById('dc-ms-' + id);
+      if (!wrapper) return;
+      const wasOpen = wrapper.classList.contains('open');
+      Views._dcMsCloseAll();
+      if (!wasOpen) {
+        wrapper.classList.add('open');
+        const btn = document.getElementById('dc-btn-' + id);
+        if (btn) btn.setAttribute('aria-expanded', 'true');
+        const searchInput = wrapper.querySelector('.dc-ms-search-input');
+        if (searchInput) {
+          searchInput.value = '';
+          Views._dcMsSearch(id, '');
+          setTimeout(() => searchInput.focus(), 40);
+        }
+      }
+    },
+
+    _dcMsCloseAll() {
+      document.querySelectorAll('.dc-multiselect.open').forEach(w => {
+        w.classList.remove('open');
+        const btn = w.querySelector('.dc-multiselect-btn');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+      });
+    },
+
+    _dcOnMsCheckChange(id, chk) {
+      const select = document.getElementById(id);
+      if (select) {
+        const opt = Array.from(select.options).find(o => o.value === chk.value);
+        if (opt) opt.selected = chk.checked;
+      }
+      const row = chk.closest('.dc-ms-option');
+      if (row) {
+        if (chk.checked) row.classList.add('selected');
+        else row.classList.remove('selected');
+      }
+      Views._dcMsUpdateButton(id);
+    },
+
+    _dcMsUpdateButton(id) {
+      const select = document.getElementById(id);
+      const lblEl = document.getElementById('dc-lbl-' + id);
+      const countEl = document.getElementById('dc-count-' + id);
+      if (!select || !lblEl) return;
+
+      const selected = Array.from(select.selectedOptions);
+      const count = selected.length;
+      if (countEl) countEl.textContent = `${count} selected`;
+
+      if (count === 0) {
+        lblEl.innerHTML = '<span class="dc-ms-placeholder">All</span>';
+      } else if (count === 1) {
+        lblEl.innerHTML = `<span class="dc-ms-text" title="${escHtml(selected[0].text)}">${escHtml(selected[0].text)}</span>`;
+      } else {
+        lblEl.innerHTML = `<span class="dc-ms-badge-pill"><span class="dc-ms-count">${count}</span> Selected</span>`;
+      }
+    },
+
+    _dcMsSelectAll(id) {
+      const wrapper = document.getElementById('dc-ms-' + id);
+      const select = document.getElementById(id);
+      if (!wrapper || !select) return;
+
+      wrapper.querySelectorAll('.dc-ms-option').forEach(row => {
+        if (row.style.display !== 'none') {
+          const chk = row.querySelector('input[type="checkbox"]');
+          if (chk) {
+            chk.checked = true;
+            row.classList.add('selected');
+            const opt = Array.from(select.options).find(o => o.value === chk.value);
+            if (opt) opt.selected = true;
+          }
+        }
+      });
+      Views._dcMsUpdateButton(id);
+    },
+
+    _dcMsClearAll(id) {
+      const wrapper = document.getElementById('dc-ms-' + id);
+      const select = document.getElementById(id);
+      if (!wrapper || !select) return;
+
+      wrapper.querySelectorAll('.dc-ms-option').forEach(row => {
+        const chk = row.querySelector('input[type="checkbox"]');
+        if (chk) chk.checked = false;
+        row.classList.remove('selected');
+      });
+      Array.from(select.options).forEach(o => o.selected = false);
+      Views._dcMsUpdateButton(id);
+    },
+
+    _dcMsSearch(id, query) {
+      const wrapper = document.getElementById('dc-ms-' + id);
+      if (!wrapper) return;
+      const q = (query || '').toLowerCase().trim();
+      wrapper.querySelectorAll('.dc-ms-option').forEach(row => {
+        const txt = (row.textContent || '').toLowerCase();
+        row.style.display = (!q || txt.includes(q)) ? '' : 'none';
+      });
+    },
+
+    _initPremiumMultiSelects() {
+      // Kept for backward compatibility
+      Views._initDcMultiSelectListeners();
     },
 
     _dcPopulateFilterDropdowns() {
       const dc = App.state.documentsCenter;
       const opts = dc.filterOptions || {};
 
-      const fillMulti = (id, items) => {
-        const el = document.getElementById(id);
-        if (!el || el.options.length > 0) return; // Prevent double-fill
-        (items || []).forEach(v => {
+      const updateList = (id, newItems) => {
+        if (!newItems || !newItems.length) return;
+        const select = document.getElementById(id);
+        const listEl = document.getElementById('dc-list-' + id);
+        if (!select || !listEl) return;
+
+        const existingVals = new Set(Array.from(select.options).map(o => o.value));
+        newItems.forEach(v => {
+          if (!v || existingVals.has(v)) return;
+          existingVals.add(v);
+
+          // Append to hidden select
           const o = document.createElement('option');
           o.value = v; o.textContent = v;
-          el.appendChild(o);
+          select.appendChild(o);
+
+          // Append to custom list
+          const row = document.createElement('label');
+          row.className = 'dc-ms-option';
+          row.dataset.val = v;
+          row.title = v;
+          row.innerHTML = `<input type="checkbox" value="${escHtml(v)}" onchange="Views._dcOnMsCheckChange('${id}', this)"><span class="dc-ms-opt-text">${escHtml(v)}</span>`;
+          listEl.appendChild(row);
         });
       };
 
@@ -4997,10 +5074,10 @@
         ? App.state.settings.statuses
         : (opts.statuses || []);
 
-      fillMulti('dc-filter-status', statuses);
-      fillMulti('dc-filter-status-exclude', statuses);
-      fillMulti('dc-filter-dept', opts.departments);
-      fillMulti('dc-filter-nat', opts.nationalities);
+      updateList('dc-filter-status', statuses);
+      updateList('dc-filter-status-exclude', statuses);
+      updateList('dc-filter-dept', opts.departments);
+      updateList('dc-filter-nat', opts.nationalities);
 
       const allBatches = Array.from(new Set([
         ...(opts.batchNumbers || []),
@@ -5010,10 +5087,7 @@
         ...(dc.candidates || []).map(c => Views._getBatchValue(c)).filter(Boolean)
       ])).filter(Boolean).sort();
 
-      fillMulti('dc-filter-batch', allBatches);
-
-      // Upgrade all plain selects to premium checkbox-dropdowns
-      Views._initPremiumMultiSelects();
+      updateList('dc-filter-batch', allBatches);
     },
 
     _dcApplyFilters() {
@@ -5128,19 +5202,10 @@
     },
 
     _dcClearFilters() {
-      // Deselect all options + reset custom checkbox-dropdown UI
+      // Clear all custom checkbox-dropdowns and reset hidden selects
       ['dc-filter-status', 'dc-filter-status-exclude', 'dc-filter-dept', 'dc-filter-nat',
        'dc-filter-batch', 'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        Array.from(el.options).forEach(o => { o.selected = false; });
-        // Sync the custom wrapper UI
-        const wrapper = el.nextElementSibling;
-        if (wrapper && wrapper.classList.contains('premium-multiselect')) {
-          wrapper.querySelectorAll('input[type="checkbox"]').forEach(chk => { chk.checked = false; });
-          const lbl = wrapper.querySelector('.premium-multiselect-btn span');
-          if (lbl) lbl.innerText = 'All';
-        }
+        Views._dcMsClearAll(id);
       });
       const s = document.getElementById('dc-search');
       if (s) s.value = '';
