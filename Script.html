@@ -586,19 +586,19 @@
   const Router = {
     _activeIntervals: [],
     registerInterval(handle) { this._activeIntervals.push(handle); },
-    clearIntervals() { 
-      this._activeIntervals.forEach(h => clearInterval(h)); 
-      this._activeIntervals = []; 
+    clearIntervals() {
+      this._activeIntervals.forEach(h => clearInterval(h));
+      this._activeIntervals = [];
     },
     navigate(view, params = {}) {
       if (view === 'login') {
         this.navigate('dashboard', params);
         return;
       }
-      
+
       // Clear all background polling when leaving a view
       this.clearIntervals();
-      
+
       App.setState({ previousView: App.state.currentView, currentView: view, ...params });
       renderSidebar();
       renderView();
@@ -1116,10 +1116,10 @@
       docCompleteness = docCompleteness || App.state.docCompleteness || {};
 
       // Read excluded statuses directly from App.state.settings, with a safe fallback
-      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0) 
-        ? App.state.settings.excludedStatuses 
+      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0)
+        ? App.state.settings.excludedStatuses
         : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
-        
+
       const EXCLUDED_KPI_STATUSES = new Set(excludedArray);
 
       const MISSING_DOC_STATUSES = new Set([
@@ -1159,7 +1159,7 @@
       candidates.forEach(c => {
         const status = (c.CurrentStatus || '').trim();
         if (EXCLUDED_KPI_STATUSES.has(status)) return;
-        
+
         const comp = docCompleteness && docCompleteness[c.CandidateID];
         if (comp) {
           REQUIRED_DOCS.forEach(dt => {
@@ -1206,8 +1206,8 @@
         : allCands;
 
       // Read excluded statuses directly from App.state.settings, with a safe fallback
-      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0) 
-        ? App.state.settings.excludedStatuses 
+      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0)
+        ? App.state.settings.excludedStatuses
         : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
       const EXCLUDED_KPI_STATUSES = new Set(excludedArray);
 
@@ -2191,16 +2191,16 @@
       try {
         const res = await GAS.call('api_getAllCandidates');
         if (!res.success) throw new Error(res.error);
-        
+
         const compMap = {};
         res.data.forEach(c => {
           if (c.docCompleteness) compMap[c.CandidateID] = c.docCompleteness;
         });
-        
-        App.setState({ 
-          candidates: res.data, 
+
+        App.setState({
+          candidates: res.data,
           filteredCandidates: res.data,
-          docCompleteness: compMap 
+          docCompleteness: compMap
         });
         Views._populateCandidateFilterDropdowns(res.data);
 
@@ -2891,7 +2891,7 @@
         </table>
       </div>`;
     },
-    
+
     _copyCandidateLocalPath(btnEl, candidateName) {
       // 1. Extract strictly the first two names
       const nameParts = (candidateName || '').trim().split(/\s+/).slice(0, 2);
@@ -3263,7 +3263,7 @@
 
         const res = await GAS.call('api_getDocumentsByCandidate', cleanId);
         if (!res || !res.success) throw new Error(res?.error || 'Failed to retrieve documents.');
-        
+
         const docs = res.data || [];
         const el = document.getElementById('docs-section');
 
@@ -3391,12 +3391,12 @@
 
     _openStatusModal(candidateId, candidateName) {
       const candidate = (App.state.candidates || []).find(c => c.CandidateID === candidateId) || (App.state.selectedCandidate?.CandidateID === candidateId ? App.state.selectedCandidate : {});
-      const currentStatus = candidate.CurrentStatus || ''; 
+      const currentStatus = candidate.CurrentStatus || '';
       const statuses = App.state.settings?.statuses || [
-        'New Candidate', 'Pending Passport', 'Pending Photo', 'Pending Academic Certificate', 
-        'Pending Medical', 'Booked a medical examination', 'Documents Under Preparing', 
-        'Documents Complete', 'Visa Pending', 'Visa Completed', 'Mobilized', 'Closed', 
-        'Talent Acquisition Issues', 'Renewal Passport', 'Not Available', 
+        'New Candidate', 'Pending Passport', 'Pending Photo', 'Pending Academic Certificate',
+        'Pending Medical', 'Booked a medical examination', 'Documents Under Preparing',
+        'Documents Complete', 'Visa Pending', 'Visa Completed', 'Mobilized', 'Closed',
+        'Talent Acquisition Issues', 'Renewal Passport', 'Not Available',
         'Creating WhatsApp Group', 'Unfit-PCR', 'Unfit-Injury', 'Rejected'
       ];
 
@@ -4038,10 +4038,10 @@
         const cachedEvents = App.state.calendarEvents;
         const activeKpi = document.getElementById('cal-kpi-active');
         if (activeKpi) activeKpi.textContent = cachedEvents.filter(e => e.Status === 'Active' || !e.Status).length;
-        
+
         Views._renderMonthCalendar();
         if (typeof Views._initCalendarDelegation === 'function') Views._initCalendarDelegation();
-        
+
         const initialFilter = App.state.filter || 'All';
         const btn = document.querySelector(`button[data-cal-filter="${initialFilter}"]`);
         Views._applyCalendarFilter(initialFilter, btn);
@@ -4220,14 +4220,14 @@
     _initCalendarDelegation() {
       const container = document.getElementById('month-calendar');
       if (!container || container.dataset.delegated) return;
-      
+
       container.addEventListener('click', (e) => {
         const dayCell = e.target.closest('.month-calendar__day[data-date-key]');
         if (dayCell) {
           Views._selectCalendarDay(dayCell.dataset.dateKey);
         }
       });
-      
+
       container.dataset.delegated = 'true';
     },
 
@@ -4540,7 +4540,7 @@
             const activeKpi = document.getElementById('cal-kpi-active');
             if (activeKpi) activeKpi.textContent = App.state.calendarEvents.filter(e => e.Status === 'Active' || !e.Status).length;
           }
-          
+
           if (App.state.currentView === 'calendar') {
             Views._renderMonthCalendar();
             if (typeof Views._initCalendarDelegation === 'function') Views._initCalendarDelegation();
@@ -4575,18 +4575,18 @@
 
       // Reset UI controls to default "All" values before rendering
       ['dc-filter-status', 'dc-filter-dept', 'dc-filter-nat', 'dc-filter-batch', 'dc-search',
-       'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.value = '';
-      });
+        'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.value = '';
+        });
 
       // 1. Calculate Detailed Expiry Matrix (Excluding 'Closed' Candidates)
       const _now = new Date();
       const stats = {
-        passport:    { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
-        medExam:     { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
+        passport: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
+        medExam: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
         medAnalysis: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
-        visa:        { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 }
+        visa: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 }
       };
 
       // Filter out 'Closed' candidates
@@ -4594,11 +4594,11 @@
 
       activeCands.forEach(c => {
         const checkDoc = (typeSubstring, statObj) => {
-          const doc = (App.state.documents || []).find(d => 
-            (d.CandidateID === c.CandidateID || d.candidateId === c.CandidateID) && 
+          const doc = (App.state.documents || []).find(d =>
+            (d.CandidateID === c.CandidateID || d.candidateId === c.CandidateID) &&
             (d.DocType || '').toLowerCase().includes(typeSubstring)
           );
-          
+
           if (!doc) {
             statObj.missing++;
           } else if (!doc.ExpiryDate && !doc.expiryDate) {
@@ -4663,10 +4663,10 @@
 
       const docExpiryOpts = [
         { value: 'missing', text: 'Missing', dot: '#94a3b8' },
-        { value: 'nodate',  text: 'Date Not Set', dot: '#cbd5e1' },
+        { value: 'nodate', text: 'Date Not Set', dot: '#cbd5e1' },
         { value: 'expired', text: 'Expired', dot: '#ef4444' },
-        { value: 'exp30',   text: 'Expiring (≤ 30 Days)', dot: '#f97316' },
-        { value: 'exp180',  text: 'Expiring (≤ 6 Months)', dot: '#3b82f6' }
+        { value: 'exp30', text: 'Expiring (≤ 30 Days)', dot: '#f97316' },
+        { value: 'exp180', text: 'Expiring (≤ 6 Months)', dot: '#3b82f6' }
       ];
 
       container.innerHTML = `
@@ -4902,7 +4902,7 @@
               App.state.documents = dRes.data;
               if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
             }
-          }).catch(() => {});
+          }).catch(() => { });
         } else {
           if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
         }
@@ -4960,13 +4960,13 @@
               </div>
               <div class="dc-ms-list" id="dc-list-${id}">
                 ${opts.map(opt => {
-                  const dot = opt.dot ? `<span class="dc-ms-dot" style="background:${opt.dot};"></span>` : '';
-                  return `<label class="dc-ms-option" data-val="${escHtml(opt.value)}" title="${escHtml(opt.text)}">
+        const dot = opt.dot ? `<span class="dc-ms-dot" style="background:${opt.dot};"></span>` : '';
+        return `<label class="dc-ms-option" data-val="${escHtml(opt.value)}" title="${escHtml(opt.text)}">
                     <input type="checkbox" value="${escHtml(opt.value)}" onchange="Views._dcOnMsCheckChange('${id}', this)">
                     ${dot}
                     <span class="dc-ms-opt-text">${escHtml(opt.text)}</span>
                   </label>`;
-                }).join('')}
+      }).join('')}
               </div>
               <div class="dc-ms-footer">
                 <span class="dc-ms-footer-count" id="dc-count-${id}">0 selected</span>
@@ -5162,14 +5162,14 @@
 
       const incStatuses = getMultiVals('dc-filter-status');
       const excStatuses = getMultiVals('dc-filter-status-exclude');
-      const depts       = getMultiVals('dc-filter-dept');
-      const nats        = getMultiVals('dc-filter-nat');
-      const batches     = getMultiVals('dc-filter-batch');
-      const fPass       = getMultiVals('dc-filter-passport');
-      const fMedExam    = getMultiVals('dc-filter-medexam');
-      const fMedAna     = getMultiVals('dc-filter-medanalysis');
-      const fVisa       = getMultiVals('dc-filter-visa');
-      const search      = (document.getElementById('dc-search')?.value || '').toLowerCase().trim();
+      const depts = getMultiVals('dc-filter-dept');
+      const nats = getMultiVals('dc-filter-nat');
+      const batches = getMultiVals('dc-filter-batch');
+      const fPass = getMultiVals('dc-filter-passport');
+      const fMedExam = getMultiVals('dc-filter-medexam');
+      const fMedAna = getMultiVals('dc-filter-medanalysis');
+      const fVisa = getMultiVals('dc-filter-visa');
+      const search = (document.getElementById('dc-search')?.value || '').toLowerCase().trim();
 
       const _now = new Date();
       _now.setHours(0, 0, 0, 0);
@@ -5227,10 +5227,10 @@
         }
 
         // Document expiry state (multi-value — any of the selected states matches)
-        if (fPass.length > 0    && !fPass.includes(getDocState(c, 'passport'))) return false;
+        if (fPass.length > 0 && !fPass.includes(getDocState(c, 'passport'))) return false;
         if (fMedExam.length > 0 && !fMedExam.includes(getDocState(c, 'medical examination'))) return false;
-        if (fMedAna.length > 0  && !fMedAna.includes(getDocState(c, 'medical analysis'))) return false;
-        if (fVisa.length > 0    && !fVisa.includes(getDocState(c, 'visa'))) return false;
+        if (fMedAna.length > 0 && !fMedAna.includes(getDocState(c, 'medical analysis'))) return false;
+        if (fVisa.length > 0 && !fVisa.includes(getDocState(c, 'visa'))) return false;
 
         return true;
       });
@@ -5268,9 +5268,9 @@
     _dcClearFilters() {
       // Clear all custom checkbox-dropdowns and reset hidden selects
       ['dc-filter-status', 'dc-filter-status-exclude', 'dc-filter-dept', 'dc-filter-nat',
-       'dc-filter-batch', 'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
-        Views._dcMsClearAll(id);
-      });
+        'dc-filter-batch', 'dc-filter-passport', 'dc-filter-medexam', 'dc-filter-medanalysis', 'dc-filter-visa'].forEach(id => {
+          Views._dcMsClearAll(id);
+        });
       const s = document.getElementById('dc-search');
       if (s) s.value = '';
 
@@ -5400,8 +5400,8 @@
         }
 
         if (App.state.documents) {
-          const existingDoc = App.state.documents.find(d => 
-            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+          const existingDoc = App.state.documents.find(d =>
+            (d.CandidateID === candidateId || d.candidateId === candidateId) &&
             (d.DocType || '').toLowerCase() === docType.toLowerCase()
           );
           if (existingDoc) {
@@ -5658,13 +5658,13 @@
 
           for (let i = 0; i < candIds.length; i += chunkSize) {
             const chunk = candIds.slice(i, i + chunkSize);
-            
+
             // Update UI Progress dynamically
             btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Exporting ${Math.min(i + chunkSize, candIds.length)}/${candIds.length} Candidates...`;
-            
+
             const res = await GAS.call('api_massiveDriveExport', JSON.stringify(chunk), JSON.stringify(docs), folderId, batchName);
             if (!res || !res.success) throw new Error(res?.error || 'Chunk export failed');
-            
+
             // Carry over the folder ID for the next chunk
             folderId = res.folderId;
             folderUrl = res.folderUrl;
@@ -5675,7 +5675,7 @@
           btn.innerHTML = '<i class="fas fa-download"></i> Download Selected';
           window.open(folderUrl, '_blank');
           App.showToast('Export complete! Files organized into subfolders.', 'success');
-          return; 
+          return;
         } catch (err) {
           Router.clearIntervals();
           btn.disabled = false;
@@ -5929,7 +5929,7 @@
         if (!res.success) throw new Error(res.error);
 
         const isExpirable = ['Passport', 'Medical Examination', 'Medical Analysis'].includes(docType);
-        
+
         let defaultY = '', defaultM = '', defaultD = '';
         if (currentExpiry && /^\d{4}-\d{2}-\d{2}$/.test(currentExpiry)) {
           const parts = currentExpiry.split('-');
@@ -6019,7 +6019,7 @@
         if (!res.success) throw new Error(res.error);
 
         Toast.success(`${docType} expiry date saved!`);
-        
+
         // Update local state
         if (App.state.documentsCenter && App.state.documentsCenter.loaded) {
           const cand = App.state.documentsCenter.candidates.find(c => c.candidateId === candidateId);
@@ -6032,8 +6032,8 @@
         }
 
         if (App.state.documents) {
-          const existingDoc = App.state.documents.find(d => 
-            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+          const existingDoc = App.state.documents.find(d =>
+            (d.CandidateID === candidateId || d.candidateId === candidateId) &&
             (d.DocType || '').toLowerCase() === docType.toLowerCase()
           );
           if (existingDoc) {
@@ -6043,7 +6043,7 @@
           }
           if (Views._dcUpdateExpiryKpis) Views._dcUpdateExpiryKpis();
         }
-        
+
         btn.innerHTML = 'Saved ✓';
         btn.style.backgroundColor = 'var(--success)';
         btn.style.borderColor = 'var(--success)';
@@ -6070,10 +6070,10 @@
       _now.setHours(0, 0, 0, 0);
 
       const stats = {
-        passport:    { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
-        medExam:     { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
+        passport: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
+        medExam: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
         medAnalysis: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 },
-        visa:        { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 }
+        visa: { missing: 0, noDate: 0, expired: 0, exp30: 0, exp180: 0 }
       };
 
       // Use FILTERED candidates; strictly exclude 'Closed' status regardless of filter
@@ -6158,8 +6158,8 @@
 
     _exportDocExpiryCSV() {
       try {
-        const candidatesToExport = Views._docFilteredCandidates || 
-          App.state.documentsCenter?.filteredCandidates || 
+        const candidatesToExport = Views._docFilteredCandidates ||
+          App.state.documentsCenter?.filteredCandidates ||
           App.state.candidates || [];
         if (candidatesToExport.length === 0) {
           Toast.warning('No candidates available to export.');
@@ -6170,8 +6170,8 @@
 
         // Helper to calculate days remaining
         const getDaysRemaining = (candidateId, docTypeSubstring) => {
-          let doc = (App.state.documents || []).find(d => 
-            (d.CandidateID === candidateId || d.candidateId === candidateId) && 
+          let doc = (App.state.documents || []).find(d =>
+            (d.CandidateID === candidateId || d.candidateId === candidateId) &&
             (d.DocType || d.docType || '').toLowerCase().includes(docTypeSubstring.toLowerCase())
           );
 
@@ -6187,26 +6187,26 @@
               }
             }
           }
-          
+
           if (!doc && !expiryDate) return 'Missing';
           if (!expiryDate) return 'No Expiry Date';
-          
+
           const d = typeof _parseSafeDate === 'function' ? _parseSafeDate(expiryDate) : new Date(expiryDate);
           if (!d || isNaN(d.getTime())) return 'No Date';
           d.setHours(0, 0, 0, 0);
           const today = new Date();
           today.setHours(0, 0, 0, 0);
-          return Math.ceil((d - today) / (1000 * 60 * 60 * 24)); 
+          return Math.ceil((d - today) / (1000 * 60 * 60 * 24));
         };
 
         // CSV Header
         const headers = [
-          'HR Code', 
-          'Full Name', 
-          'Position', 
-          'Passport (Days Left)', 
-          'Visa (Days Left)', 
-          'Medical Exam (Days Left)', 
+          'HR Code',
+          'Full Name',
+          'Position',
+          'Passport (Days Left)',
+          'Visa (Days Left)',
+          'Medical Exam (Days Left)',
           'Medical Analysis (Days Left)'
         ];
         const csvRows = [headers.join(',')];
@@ -6239,7 +6239,7 @@
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         Toast.success('Export completed successfully.');
       } catch (err) {
         console.error(err);
@@ -6332,10 +6332,10 @@
         </div>
         <div class="settings-card__body" id="list-statuses">
           ${statuses.map((st, idx) => {
-            const isFirst = idx === 0;
-            const isLast = idx === statuses.length - 1;
-            const isExcluded = excluded.has(st);
-            return `
+        const isFirst = idx === 0;
+        const isLast = idx === statuses.length - 1;
+        const isExcluded = excluded.has(st);
+        return `
             <div class="settings-item-row" id="row-statuses-${idx}">
               <div class="settings-item-label-wrap" style="flex-wrap:wrap">
                 <span class="settings-item-idx">#${idx + 1}</span>
@@ -6352,7 +6352,7 @@
                 <button type="button" class="settings-btn-icon settings-btn-icon--delete" title="Delete" onclick="Views._deleteSettingItem('statuses', ${idx})">🗑️</button>
               </div>
             </div>`;
-          }).join('')}
+      }).join('')}
         </div>
         <div class="settings-card__add-box">
           <input type="text" id="input-add-statuses" class="form-input" placeholder="e.g. Visa Issued (Awaiting Flight)" onkeydown="if(event.key==='Enter')Views._addSettingItem('statuses')" />
@@ -6482,7 +6482,7 @@
         btn.disabled = true;
         btn.innerHTML = `<span class="spinner spinner--sm"></span> Saving…`;
       }
-      
+
       try {
         // 2. Prepare payload (Batch statuses and excludedStatuses atomically)
         let payload;
@@ -6497,7 +6497,7 @@
 
         // 3. Single RPC Call
         const res = await GAS.call('api_updateSystemSettings', payload);
-        
+
         if (res && res.success) {
           // 4. Update memory safely with backend-sanitized result
           App.setState({ settings: res.settings });
@@ -6838,7 +6838,7 @@
 
     renderTopbar();
     renderSidebar();
-    Router.navigate('dashboard');
+    Router.navigate('candidates');
   };
 
   document.addEventListener('DOMContentLoaded', initApp);
