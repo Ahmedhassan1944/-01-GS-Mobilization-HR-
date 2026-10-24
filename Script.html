@@ -33,6 +33,10 @@
       // ── Candidates table state ───────────────────────────────
       sortCol: '',           // column key to sort by
       sortDir: 'asc',        // 'asc' | 'desc'
+      // ── Dashboard table state ────────────────────────────────
+      dashSortCol: '',       // column key to sort by in Dashboard
+      dashSortDir: 'asc',    // 'asc' | 'desc'
+      dashSortAsc: true,     // boolean flag for convenient tracking
       statusFilters: [],        // [] = all; otherwise array of status strings to INCLUDE
       excludeStatusFilters: [], // [] = none excluded; otherwise statuses to HIDE
       docFilters: [],           // array of doc-type strings meaning "missing these"
@@ -1595,6 +1599,13 @@
         return matchQ && matchS && matchExcl && matchD && matchDoc && matchCompletion;
       });
 
+      // Apply active dashboard sorting if set
+      const dashSortCol = App.state.dashSortCol;
+      const dashSortDir = App.state.dashSortDir || (App.state.dashSortAsc === false ? 'desc' : 'asc');
+      if (dashSortCol && typeof Views._sortCandidateList === 'function') {
+        data = Views._sortCandidateList(data, dashSortCol, dashSortDir, docCompleteness);
+      }
+
       // Write the final filtered result once — the single source of truth for the table.
       App.setState({ filteredCandidates: data });
 
@@ -1778,6 +1789,7 @@
       if (document.getElementById('dash-tb-status')) document.getElementById('dash-tb-status').selectedIndex = 0;
       if (document.getElementById('dash-tb-nat')) document.getElementById('dash-tb-nat').selectedIndex = 0;
       if (document.getElementById('dash-tb-batch')) document.getElementById('dash-tb-batch').selectedIndex = 0;
+      App.setState({ dashSortCol: '', dashSortDir: 'asc', dashSortAsc: true });
       // Also clear KPI card selection
       Views._clearDashboardFilter();
       Views._dashUpdateClearButton();
@@ -1789,12 +1801,16 @@
       Views._selectedBatchFilter = null;
       document.querySelectorAll('.kpi-card--selected').forEach(el => el.classList.remove('kpi-card--selected'));
       document.getElementById('dashboard-filter-hint').style.display = 'none';
-      App.setState({ filteredCandidates: App.state.candidates });
-      Views._renderDashboardTable(App.state.candidates);
+      let cands = App.state.candidates || [];
+      if (App.state.dashSortCol && typeof Views._sortCandidateList === 'function') {
+        cands = Views._sortCandidateList(cands, App.state.dashSortCol, App.state.dashSortDir, App.state.docCompleteness);
+      }
+      App.setState({ filteredCandidates: cands });
+      Views._renderDashboardTable(cands);
       Views._renderKpiSectionsWithBatchFilter();
     },
 
-    _renderDashboardTable(candidates) {
+    _renderDashboardTable(candidates, animated = true) {
       const el = document.getElementById('dashboard-table');
       if (!el) return;
       const countEl = document.getElementById('dashboard-cands-count');
@@ -1805,18 +1821,45 @@
         return;
       }
 
+      if (!animated) {
+        el.innerHTML = Views._candidateTableHtml(candidates, true);
+        return;
+      }
+
       // Animate out → update → animate in
       el.style.transition = 'opacity .18s ease, transform .18s ease';
       el.style.opacity = '0';
       el.style.transform = 'translateY(6px)';
 
       setTimeout(() => {
-        el.innerHTML = Views._candidateTableHtml(candidates);
+        el.innerHTML = Views._candidateTableHtml(candidates, true);
         requestAnimationFrame(() => {
           el.style.opacity = '1';
           el.style.transform = 'translateY(0)';
         });
       }, 180);
+    },
+
+    _sortDashboard(col) {
+      const currentCol = App.state.dashSortCol;
+      const currentAsc = App.state.dashSortAsc !== false; // default true
+      const newAsc = (currentCol === col) ? !currentAsc : true;
+      const newDir = newAsc ? 'asc' : 'desc';
+
+      App.setState({
+        dashSortCol: col,
+        dashSortAsc: newAsc,
+        dashSortDir: newDir
+      });
+
+      // Get currently filtered candidates
+      let list = App.state.filteredCandidates || App.state.candidates || [];
+      const { docCompleteness } = App.state;
+
+      list = Views._sortCandidateList(list, col, newDir, docCompleteness);
+
+      App.setState({ filteredCandidates: list });
+      Views._renderDashboardTable(list, false);
     },
 
     _renderDashboardTables() {
@@ -2307,31 +2350,43 @@
 
       // Sorting — does not change the count, only the order.
       if (sortCol) {
-        data = [...data].sort((a, b) => {
-          let valA, valB;
-          if (sortCol === 'pct') {
-            // Unavailable candidates sort as -1 (below 0%) regardless of sort direction.
-            valA = docCompleteness[a.CandidateID]?.pct ?? -1;
-            valB = docCompleteness[b.CandidateID]?.pct ?? -1;
-          } else if (sortCol === 'missingCount') {
-            valA = docCompleteness[a.CandidateID]?.missingDocs?.length ?? REQUIRED_DOCS.length;
-            valB = docCompleteness[b.CandidateID]?.missingDocs?.length ?? REQUIRED_DOCS.length;
-          } else {
-            valA = (a[sortCol] || '').toString().toLowerCase();
-            valB = (b[sortCol] || '').toString().toLowerCase();
-          }
-          if (valA < valB) return sortDir === 'asc' ? -1 : 1;
-          if (valA > valB) return sortDir === 'asc' ? 1 : -1;
-          return 0;
-        });
+        data = Views._sortCandidateList(data, sortCol, sortDir, docCompleteness);
       }
 
       App.setState({ filteredCandidates: data });
       Views._renderCandidatesTable(data);
     },
 
+    // ── Universal candidate list sorting helper ──
+    _sortCandidateList(list, col, dir = 'asc', docCompleteness = {}) {
+      if (!col || !list || !list.length) return list;
+      return [...list].sort((a, b) => {
+        let valA, valB;
+        if (col === 'pct') {
+          // Unavailable candidates sort as -1 (below 0%) regardless of sort direction.
+          valA = docCompleteness[a.CandidateID]?.pct ?? -1;
+          valB = docCompleteness[b.CandidateID]?.pct ?? -1;
+        } else if (col === 'missingCount') {
+          valA = docCompleteness[a.CandidateID]?.missingDocs?.length ?? REQUIRED_DOCS.length;
+          valB = docCompleteness[b.CandidateID]?.missingDocs?.length ?? REQUIRED_DOCS.length;
+        } else if (col === 'CreatedAt') {
+          valA = new Date(a.CreatedAt || 0).getTime();
+          valB = new Date(b.CreatedAt || 0).getTime();
+        } else {
+          valA = (a[col] || '').toString().toLowerCase();
+          valB = (b[col] || '').toString().toLowerCase();
+        }
+        if (valA < valB) return dir === 'asc' ? -1 : 1;
+        if (valA > valB) return dir === 'asc' ? 1 : -1;
+        return 0;
+      });
+    },
+
     // ── Column sort toggle ──
     _sortBy(col) {
+      if (document.getElementById('dashboard-table') && !document.getElementById('candidates-table')) {
+        return Views._sortDashboard(col);
+      }
       const { sortCol, sortDir } = App.state;
       App.setState({
         sortCol: col,
@@ -2676,13 +2731,19 @@
     },
 
     // ── Sortable column header HTML helper ──
-    _thSort(label, col) {
-      const { sortCol, sortDir } = App.state;
+    _thSort(label, col, isDashboard = false) {
+      if (typeof isDashboard !== 'boolean') {
+        isDashboard = !document.getElementById('candidates-table') && !!document.getElementById('dashboard-table');
+      }
+      const sortCol = isDashboard ? (App.state.dashSortCol || '') : (App.state.sortCol || '');
+      const sortDir = isDashboard ? (App.state.dashSortDir || (App.state.dashSortAsc === false ? 'desc' : 'asc')) : (App.state.sortDir || 'asc');
       const active = sortCol === col;
       const arrow = active ? (sortDir === 'asc' ? '▲' : '▼') : '⇅';
       const ariaSort = active ? (sortDir === 'asc' ? 'ascending' : 'descending') : 'none';
+      const clickFn = isDashboard ? `Views._sortDashboard('${col}')` : `Views._sortBy('${col}')`;
       return `<th scope="col" class="th--sortable${active ? ' th--sorted' : ''}"
-                  onclick="Views._sortBy('${col}')" aria-sort="${ariaSort}">${label}<span class="th-arrow" aria-hidden="true"> ${arrow}</span></th>`;
+                  data-sort="${col}"
+                  onclick="${clickFn}" aria-sort="${ariaSort}">${label}<span class="th-arrow" aria-hidden="true"> ${arrow}</span></th>`;
     },
 
     _buildEventDotsMap(events) {
@@ -2714,7 +2775,10 @@
         `</span>`;
     },
 
-    _candidateTableHtml(rows) {
+    _candidateTableHtml(rows, isDashboard = false) {
+      if (typeof isDashboard !== 'boolean') {
+        isDashboard = !document.getElementById('candidates-table') && !!document.getElementById('dashboard-table');
+      }
       const { docCompleteness } = App.state;
 
       const trs = rows.map(c => {
@@ -2812,13 +2876,13 @@
         <table>
           <thead>
             <tr>
-              ${Views._thSort('Candidate', 'FullName')}
-              <th scope="col">Position</th>
-              <th scope="col">Type</th>
-              ${Views._thSort('Status', 'CurrentStatus')}
-              ${Views._thSort('Doc Completeness', 'pct')}
-              ${Views._thSort('Missing Documents', 'missingCount')}
-              ${Views._thSort('Created', 'CreatedAt')}
+              ${Views._thSort('Candidate', 'FullName', isDashboard)}
+              ${Views._thSort('Position', 'Position', isDashboard)}
+              ${Views._thSort('Type', 'Recruitment_Type', isDashboard)}
+              ${Views._thSort('Status', 'CurrentStatus', isDashboard)}
+              ${Views._thSort('Doc Completeness', 'pct', isDashboard)}
+              ${Views._thSort('Missing Documents', 'missingCount', isDashboard)}
+              ${Views._thSort('Created', 'CreatedAt', isDashboard)}
               <th scope="col">Actions</th>
               <th scope="col">Buttons</th>
             </tr>
