@@ -15,7 +15,14 @@
   // GLOBAL STATE
   // ─────────────────────────────────────────────
 
+  // ─────────────────────────────────────────────
+  // UNIVERSAL STRING NORMALIZATION HELPER (SSOT)
+  // ─────────────────────────────────────────────
+  const normalizeText = (text) => (text || '').toString().trim().toLowerCase();
+  window.normalizeText = normalizeText;
+
   const App = {
+    normalizeText,
     state: {
       currentUser: { name: '', role: null, email: '' },
       currentView: 'dashboard',
@@ -607,23 +614,22 @@
    * @returns {{ status:'ok', pct:number, missingDocs:string[], presentDocs:string[] }}
    */
   const computeCompleteness = (docs) => {
-    const uploadedTypes = new Set(
-      (docs || [])
-        .filter(d => {
-          // Robustly sanitize ApprovalStatus before comparison
-          const status = String(d.ApprovalStatus ?? '').trim();
-          return status !== 'Rejected';
-        })
-        .map(d => {
-          // Sanitize DocType; apply alias if a confirmed legacy value is present
-          const raw = String(d.DocType ?? '').trim();
-          return DOC_TYPE_ALIASES[raw.toLowerCase()] ?? raw;
-        })
-    );
+    const validDocs = (docs || []).filter(d => {
+      const status = normalizeText(d.ApprovalStatus ?? d.Status ?? '');
+      return status !== 'rejected';
+    });
+
+    // Array of normalized types candidate has uploaded
+    const uploadedNormalizedTypes = validDocs.map(d => {
+      const raw = (d.DocType || d.Type || d.docType || '').toString().trim();
+      const aliased = DOC_TYPE_ALIASES[raw.toLowerCase()] || raw;
+      return normalizeText(aliased);
+    });
+
     const requiredDocs = getRequiredDocs();
-    const presentDocs = requiredDocs.filter(req => uploadedTypes.has(req));
-    const missingDocs = requiredDocs.filter(req => !uploadedTypes.has(req));
-    const pct = requiredDocs.length > 0 ? Math.round((presentDocs.length / requiredDocs.length) * 100) : 100;
+    const presentDocs = requiredDocs.filter(reqDoc => uploadedNormalizedTypes.includes(normalizeText(reqDoc)));
+    const missingDocs = requiredDocs.filter(reqDoc => !uploadedNormalizedTypes.includes(normalizeText(reqDoc)));
+    const pct = requiredDocs.length > 0 ? Math.min(Math.round((presentDocs.length / requiredDocs.length) * 100), 100) : 100;
     return { status: 'ok', pct, missingDocs, presentDocs };
   };
 
@@ -1159,6 +1165,21 @@
       Views._refreshDashboard();
     },
 
+    _getMissingDocs(candidateId) {
+      const cleanId = normalizeText(candidateId);
+      const comp = App.state.docCompleteness && App.state.docCompleteness[candidateId];
+      if (comp && Array.isArray(comp.missingDocs)) {
+        return comp.missingDocs;
+      }
+      const requiredDocs = getRequiredDocs();
+      const candidateDocs = (App.state.documents || []).filter(d =>
+        normalizeText(d.CandidateID || d.candidateId) === cleanId &&
+        normalizeText(d.ApprovalStatus || d.Status) !== 'rejected'
+      );
+      const uploadedNormalizedTypes = candidateDocs.map(d => normalizeText(d.DocType || d.docType));
+      return requiredDocs.filter(reqDoc => !uploadedNormalizedTypes.includes(normalizeText(reqDoc)));
+    },
+
     _computeDashboardKpis(candidates, docCompleteness) {
       candidates = candidates || App.state.candidates || [];
       docCompleteness = docCompleteness || App.state.docCompleteness || {};
@@ -1168,12 +1189,12 @@
         ? App.state.settings.excludedStatuses
         : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
 
-      const EXCLUDED_KPI_STATUSES = new Set(excludedArray);
+      const EXCLUDED_KPI_STATUSES = new Set(excludedArray.map(s => normalizeText(s)));
 
       const MISSING_DOC_STATUSES = new Set([
-        'New Candidate', 'Documents Requested', 'Documents Under Preparing',
-        'Pending Passport', 'Pending Photo', 'Pending Academic Certificate',
-        'Pending Medical', 'Booked a medical examination'
+        'new candidate', 'documents requested', 'documents under preparing',
+        'pending passport', 'pending photo', 'pending academic certificate',
+        'pending medical', 'booked a medical examination'
       ]);
 
       let activeCount = 0, missingDocs = 0, visaPending = 0, visaCompleted = 0;
@@ -1182,41 +1203,63 @@
       let unfitPcr = 0, unfitInjury = 0, rejected = 0;
 
       candidates.forEach(c => {
-        const status = (c.CurrentStatus || '').trim();
-        if (!EXCLUDED_KPI_STATUSES.has(status)) activeCount++;
-        if (MISSING_DOC_STATUSES.has(status)) missingDocs++;
-        if (status === 'Visa Pending') visaPending++;
-        if (status === 'Visa Completed') visaCompleted++;
-        if (status === 'Mobilized') mobilized++;
-        if (status === 'Pending Medical') pendingMedical++;
-        if (status === 'Booked a medical examination') bookedMedical++;
-        if (status === 'Documents Under Preparing') docsUnderPreparing++;
-        if (status === 'Talent Acquisition Issues') taIssues++;
-        if (status === 'Renewal Passport') renewalPassport++;
-        if (status === 'Not Available') notAvailable++;
-        if (status === 'Creating WhatsApp Group') creatingWhatsapp++;
-        if (status === 'Unfit-PCR') unfitPcr++;
-        if (status === 'Unfit-Injury') unfitInjury++;
-        if (status === 'Rejected') rejected++;
+        const rawStatus = (c.CurrentStatus || c.Status || '').toString().trim();
+        const normStatus = normalizeText(rawStatus);
+        if (!EXCLUDED_KPI_STATUSES.has(normStatus)) activeCount++;
+        if (MISSING_DOC_STATUSES.has(normStatus)) missingDocs++;
+        if (normStatus === 'visa pending') visaPending++;
+        if (normStatus === 'visa completed') visaCompleted++;
+        if (normStatus === 'mobilized') mobilized++;
+        if (normStatus === 'pending medical') pendingMedical++;
+        if (normStatus === 'booked a medical examination') bookedMedical++;
+        if (normStatus === 'documents under preparing') docsUnderPreparing++;
+        if (normStatus === 'talent acquisition issues') taIssues++;
+        if (normStatus === 'renewal passport') renewalPassport++;
+        if (normStatus === 'not available') notAvailable++;
+        if (normStatus === 'creating whatsapp group') creatingWhatsapp++;
+        if (normStatus === 'unfit-pcr') unfitPcr++;
+        if (normStatus === 'unfit-injury') unfitInjury++;
+        if (normStatus === 'rejected') rejected++;
       });
 
       const requiredDocs = getRequiredDocs();
-      const hasCount = {}, missingCount = {};
-      requiredDocs.forEach(dt => { hasCount[dt] = 0; missingCount[dt] = 0; });
+      const withCounts = {};
+      const missingCounts = {};
 
-      candidates.forEach(c => {
-        const status = (c.CurrentStatus || '').trim();
-        if (EXCLUDED_KPI_STATUSES.has(status)) return;
+      // Initialize counters using original casing for UI
+      requiredDocs.forEach(doc => {
+        withCounts[doc] = 0;
+        missingCounts[doc] = 0;
+      });
 
+      // Filter active candidates (not in excluded statuses)
+      const activeCandidates = candidates.filter(c => !EXCLUDED_KPI_STATUSES.has(normalizeText(c.CurrentStatus || c.Status)));
+      const activeCandidatesCount = activeCandidates.length;
+
+      // Count uploaded documents safely using case-insensitive mapping
+      activeCandidates.forEach(c => {
         const comp = docCompleteness && docCompleteness[c.CandidateID];
-        if (comp) {
-          requiredDocs.forEach(dt => {
-            if (comp.presentDocs.includes(dt)) hasCount[dt]++;
-            else missingCount[dt]++;
-          });
-        } else {
-          requiredDocs.forEach(dt => missingCount[dt]++);
-        }
+        const safeCompPresent = (comp && Array.isArray(comp.presentDocs))
+          ? comp.presentDocs.map(d => normalizeText(d))
+          : [];
+
+        const candDocs = (App.state.documents || []).filter(d =>
+          normalizeText(d.CandidateID || d.candidateId) === normalizeText(c.CandidateID || c.candidateId) &&
+          normalizeText(d.ApprovalStatus || d.Status) !== 'rejected'
+        );
+        const safeUploadedDocs = candDocs.map(d => normalizeText(d.DocType || d.docType));
+
+        requiredDocs.forEach(reqDoc => {
+          const safeReq = normalizeText(reqDoc);
+          if (safeCompPresent.includes(safeReq) || safeUploadedDocs.includes(safeReq)) {
+            withCounts[reqDoc]++;
+          }
+        });
+      });
+
+      // Calculate missing documents (Active Candidates - WITH counts)
+      requiredDocs.forEach(doc => {
+        missingCounts[doc] = Math.max(0, activeCandidatesCount - (withCounts[doc] || 0));
       });
 
       const k = {
@@ -1224,13 +1267,15 @@
         pendingMedical, bookedMedical, docsUnderPreparing,
         taIssues, renewalPassport, notAvailable, creatingWhatsapp,
         unfitPcr, unfitInjury, rejected,
-        hasPassport: hasCount['Passport'], hasPhoto: hasCount['Photo'],
-        hasAcademicCert: hasCount['Academic Certificate'], hasMedicalExam: hasCount['Medical Examination'],
-        hasMedicalAnalysis: hasCount['Medical Analysis'], hasVisa: hasCount['Visa'], hasCV: hasCount['CV'],
-        missingPassport: missingCount['Passport'], missingPhoto: missingCount['Photo'],
-        missingAcademicCert: missingCount['Academic Certificate'], missingMedicalExam: missingCount['Medical Examination'],
-        missingMedicalAnalysis: missingCount['Medical Analysis'], missingVisa: missingCount['Visa'], missingCV: missingCount['CV']
+        hasCount: withCounts,
+        missingCount: missingCounts
       };
+
+      requiredDocs.forEach(dt => {
+        const keySuffix = dt.replace(/\s+/g, '');
+        k[`has${keySuffix}`] = withCounts[dt] || 0;
+        k[`missing${keySuffix}`] = missingCounts[dt] || 0;
+      });
 
       Views._kpiData = k;
 
@@ -1637,7 +1682,7 @@
         const isUnavailable = comp?.status === 'unavailable';
         const matchDoc = docFilters.length === 0
           ? true
-          : (comp && !isUnavailable && docFilters.some(doc => comp.missingDocs.includes(doc)));
+          : (comp && !isUnavailable && docFilters.some(doc => { const sd = normalizeText(doc); return (comp.missingDocs || []).some(m => normalizeText(m) === sd); }));
         // Completion %
         const matchCompletion = isUnavailable
           ? (completionMin === 0)
@@ -2383,7 +2428,7 @@
         // If completeness data is unavailable we cannot confirm the doc is missing → exclude.
         const matchDoc = docFilters.length === 0
           ? true
-          : (comp && !isUnavailable && docFilters.some(doc => comp.missingDocs.includes(doc)));
+          : (comp && !isUnavailable && docFilters.some(doc => { const sd = normalizeText(doc); return (comp.missingDocs || []).some(m => normalizeText(m) === sd); }));
 
         // Minimum completion filter: unavailable data passes through (do not hide candidate).
         // pct:null (unavailable) evaluates as NaN >= completionMin which is false, so we
@@ -3340,13 +3385,14 @@
             ? Math.min(Math.round((uploadedCount / totalRequired) * 100), 100)
             : 100;
 
-          // Derive suggested auto-status
+          // Derive suggested auto-status using normalizeText
+          const missingNorm = missingDocs.map(d => normalizeText(d));
           let suggestedStatus = '';
-          if (missingDocs.includes('Passport')) suggestedStatus = 'Pending Passport';
-          else if (missingDocs.includes('Photo')) suggestedStatus = 'Pending Photo';
-          else if (missingDocs.includes('Academic Certificate')) suggestedStatus = 'Pending Academic Certificate';
-          else if (missingDocs.includes('Medical Examination')) suggestedStatus = 'Booked a medical examination';
-          else if (missingDocs.includes('Medical Analysis')) suggestedStatus = 'Booked a medical examination';
+          if (missingNorm.includes(normalizeText('Passport'))) suggestedStatus = 'Pending Passport';
+          else if (missingNorm.includes(normalizeText('Photo'))) suggestedStatus = 'Pending Photo';
+          else if (missingNorm.includes(normalizeText('Academic Certificate'))) suggestedStatus = 'Pending Academic Certificate';
+          else if (missingNorm.includes(normalizeText('Medical Examination'))) suggestedStatus = 'Booked a medical examination';
+          else if (missingNorm.includes(normalizeText('Medical Analysis'))) suggestedStatus = 'Booked a medical examination';
           else suggestedStatus = 'Documents Complete';
 
           // Determine bar colour

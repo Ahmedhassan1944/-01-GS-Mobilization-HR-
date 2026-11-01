@@ -176,7 +176,7 @@ function api_getAllCandidates() {
           
           if (isDocumentAvailable_({ DocumentID: dDocId, ApprovalStatus: dStatus })) {
             if (!approvedDocsByCand[cId]) approvedDocsByCand[cId] = {};
-            approvedDocsByCand[cId][dType] = true;
+            approvedDocsByCand[cId][dType.trim().toLowerCase()] = true;
           }
         }
       }
@@ -194,7 +194,7 @@ function api_getAllCandidates() {
         const presentDocs = [];
         const missingDocs = [];
         REQUIRED_DOCS.forEach(dt => {
-          if (candDocs[dt]) presentDocs.push(dt);
+          if (candDocs[dt.trim().toLowerCase()]) presentDocs.push(dt);
           else missingDocs.push(dt);
         });
         cand.docCompleteness = {
