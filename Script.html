@@ -1341,21 +1341,21 @@
       const statusEl = document.getElementById('kpi-grid-status');
       if (statusEl) {
         statusEl.innerHTML = [
-          Views._kpiTableRow('Active Cases', k.activeCount ?? '--', '🏗️', 'blue', 'All non-closed cases', null),
+          Views._kpiTableRow('Active Cases', k.activeCount ?? 0, '🏗️', 'blue', 'All non-closed cases', null),
           Views._kpiTableRow('Internal Candidates', internalCount, '🏢', 'blue', 'Internally recruited', { type: 'recruitmentType', value: 'Internal' }),
           Views._kpiTableRow('External Candidates', externalCount, '🌐', 'orange', 'Externally recruited', { type: 'recruitmentType', value: 'External' }),
-          Views._kpiTableRow('Pending Medical', k.pendingMedical ?? '--', '🩺', 'orange', 'Awaiting medical docs', { type: 'status', value: 'Pending Medical' }),
-          Views._kpiTableRow('Booked Medical Exam', k.bookedMedical ?? '--', '📅', 'blue', 'Medical exam appointment set', { type: 'status', value: 'Booked a medical examination' }),
-          Views._kpiTableRow('Docs Under Preparing', k.docsUnderPreparing ?? '--', '📝', 'orange', 'Documents being prepared', { type: 'status', value: 'Documents Under Preparing' }),
-          Views._kpiTableRow('Visa Pending', k.visaPending ?? '--', '🛂', 'red', 'Awaiting visa issuance', { type: 'status', value: 'Visa Pending' }),
-          Views._kpiTableRow('Visa Completed', k.visaCompleted ?? '--', '✅', 'green', 'Visa issued', { type: 'status', value: 'Visa Completed' }),
-          Views._kpiTableRow('Talent Acquisition Issues', k.taIssues ?? '--', '⚠️', 'orange', 'Talent Acquisition Issues', { type: 'status', value: 'Talent Acquisition Issues' }),
-          Views._kpiTableRow('Renewal Passport', k.renewalPassport ?? '--', '🛂', 'blue', 'Renewal Passport', { type: 'status', value: 'Renewal Passport' }),
-          Views._kpiTableRow('Not Available', k.notAvailable ?? '--', '🚫', 'gray', 'Not Available', { type: 'status', value: 'Not Available' }),
-          Views._kpiTableRow('Creating WhatsApp Group', k.creatingWhatsapp ?? '--', '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
-          Views._kpiTableRow('Unfit-PCR', k.unfitPcr ?? '--', '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
-          Views._kpiTableRow('Unfit-Injury', k.unfitInjury ?? '--', '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
-          Views._kpiTableRow('Rejected', k.rejected ?? '--', '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' })
+          Views._kpiTableRow('Pending Medical', k.pendingMedical ?? 0, '🩺', 'orange', 'Awaiting medical docs', { type: 'status', value: 'Pending Medical' }),
+          Views._kpiTableRow('Booked Medical Exam', k.bookedMedical ?? 0, '📅', 'blue', 'Medical exam appointment set', { type: 'status', value: 'Booked a medical examination' }),
+          Views._kpiTableRow('Docs Under Preparing', k.docsUnderPreparing ?? 0, '📝', 'orange', 'Documents being prepared', { type: 'status', value: 'Documents Under Preparing' }),
+          Views._kpiTableRow('Visa Pending', k.visaPending ?? 0, '🛂', 'red', 'Awaiting visa issuance', { type: 'status', value: 'Visa Pending' }),
+          Views._kpiTableRow('Visa Completed', k.visaCompleted ?? 0, '✅', 'green', 'Visa issued', { type: 'status', value: 'Visa Completed' }),
+          Views._kpiTableRow('Talent Acquisition Issues', k.taIssues ?? 0, '⚠️', 'orange', 'Talent Acquisition Issues', { type: 'status', value: 'Talent Acquisition Issues' }),
+          Views._kpiTableRow('Renewal Passport', k.renewalPassport ?? 0, '🛂', 'blue', 'Renewal Passport', { type: 'status', value: 'Renewal Passport' }),
+          Views._kpiTableRow('Not Available', k.notAvailable ?? 0, '🚫', 'gray', 'Not Available', { type: 'status', value: 'Not Available' }),
+          Views._kpiTableRow('Creating WhatsApp Group', k.creatingWhatsapp ?? 0, '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
+          Views._kpiTableRow('Unfit-PCR', k.unfitPcr ?? 0, '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
+          Views._kpiTableRow('Unfit-Injury', k.unfitInjury ?? 0, '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
+          Views._kpiTableRow('Rejected', k.rejected ?? 0, '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' })
         ].join('');
       }
 
@@ -1382,7 +1382,7 @@
       const hasEl = document.getElementById('kpi-grid-has');
       if (hasEl) {
         hasEl.innerHTML = requiredDocs.map(dt => {
-          const count = k.hasCount ? (k.hasCount[dt] ?? '--') : (k[`has${dt.replace(/\s+/g, '')}`] ?? '--');
+          const count = (k.hasCount && k.hasCount[dt] != null) ? k.hasCount[dt] : ((k[`has${dt.replace(/\s+/g, '')}`] != null) ? k[`has${dt.replace(/\s+/g, '')}`] : 0);
           return Views._kpiTableRow(dt, count, getDocIcon(dt), 'green', `${dt} uploaded & valid`, { type: 'hasDoc', value: dt });
         }).join('');
       }
@@ -1390,7 +1390,7 @@
       const missingEl = document.getElementById('kpi-grid-missing');
       if (missingEl) {
         missingEl.innerHTML = requiredDocs.map(dt => {
-          const count = k.missingCount ? (k.missingCount[dt] ?? '--') : (k[`missing${dt.replace(/\s+/g, '')}`] ?? '--');
+          const count = (k.missingCount && k.missingCount[dt] != null) ? k.missingCount[dt] : ((k[`missing${dt.replace(/\s+/g, '')}`] != null) ? k[`missing${dt.replace(/\s+/g, '')}`] : 0);
           return Views._kpiTableRow(dt, count, getDocIcon(dt), 'red', `No valid ${dt.toLowerCase()}`, { type: 'missingDoc', value: dt });
         }).join('');
       }
@@ -1471,7 +1471,7 @@
       const cardId = isFilterable
         ? `id="kpi-card-${filter.type}-${filter.value.replace(/\s+/g, '_')}"`
         : `id="kpi-card-summary-${label.toLowerCase().replace(/\s+/g, '_')}"`;
-      const displayVal = (value !== null && value !== undefined) ? value : '--';
+      const displayVal = (value !== null && value !== undefined && value !== '') ? value : 0;
       return `
       <tr class="kpi-card ${clickable} ${color ? `kpi-card--${color}` : ''}" ${cardId} ${filterAttr}
           ${isFilterable ? 'onclick="Views._onKpiCardClick(event, this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();Views._onKpiCardClick(event,this);}" tabindex="0" role="button"' : ''}
@@ -3332,9 +3332,13 @@
         if (completenessEl) {
           const presentDocs = newComp.presentDocs;
           const missingDocs = newComp.missingDocs;
-          const completedCount = presentDocs.length;
-          const totalCount = REQUIRED_DOCS.length;
-          const pct = newComp.pct;
+          const totalRequired = (App.state.settings && Array.isArray(App.state.settings.documentTypes) && App.state.settings.documentTypes.length > 0)
+            ? App.state.settings.documentTypes.length
+            : getRequiredDocs().length;
+          const uploadedCount = Math.min(presentDocs.length, totalRequired);
+          const progressPercent = totalRequired > 0
+            ? Math.min(Math.round((uploadedCount / totalRequired) * 100), 100)
+            : 100;
 
           // Derive suggested auto-status
           let suggestedStatus = '';
@@ -3346,23 +3350,23 @@
           else suggestedStatus = 'Documents Complete';
 
           // Determine bar colour
-          const barColor = pct === 100 ? 'var(--success)'
-            : pct >= 50 ? 'var(--primary)'
+          const barColor = progressPercent === 100 ? 'var(--success)'
+            : progressPercent >= 50 ? 'var(--primary)'
               : 'var(--warning)';
 
           completenessEl.innerHTML = `
           <div class="doc-completeness__inner">
             <div class="doc-completeness__header">
               <span class="doc-completeness__title">📋 Document Completeness</span>
-              <span class="doc-completeness__pct" style="color:${barColor}">${pct}%</span>
+              <span class="doc-completeness__pct" style="color:${barColor}">${progressPercent}%</span>
             </div>
             <div class="doc-completeness__bar-track" role="progressbar"
-                 aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100"
-                 aria-label="Document completeness ${pct}%">
-              <div class="doc-completeness__bar-fill" style="width:${pct}%;background:${barColor}"></div>
+                 aria-valuenow="${progressPercent}" aria-valuemin="0" aria-valuemax="100"
+                 aria-label="Document completeness ${progressPercent}%">
+              <div class="doc-completeness__bar-fill" style="width:${progressPercent}%;background:${barColor}"></div>
             </div>
             <div class="doc-completeness__meta">
-              <span>${completedCount} of ${totalCount} documents uploaded</span>
+              <span>${uploadedCount} of ${totalRequired} documents uploaded</span>
               ${suggestedStatus ? `<span>Suggested status: ${statusBadge(suggestedStatus)}</span>` : ''}
             </div>
             ${missingDocs.length ? `
