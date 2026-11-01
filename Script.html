@@ -21,8 +21,38 @@
   const normalizeText = (text) => (text || '').toString().trim().toLowerCase();
   window.normalizeText = normalizeText;
 
+  /**
+   * Helper to get only candidates whose status is NOT excluded in settings.
+   * Central SSOT for all active KPI calculations.
+   */
+  const getActiveCandidates = (candidatesList) => {
+    const allCandidates = candidatesList || (App && App.state && App.state.candidates) || [];
+
+    let excludedStatuses = [];
+    if (App && App.state && App.state.settings) {
+      if (Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0) {
+        excludedStatuses = App.state.settings.excludedStatuses.map(s => normalizeText(s));
+      } else if (Array.isArray(App.state.settings.statuses)) {
+        excludedStatuses = App.state.settings.statuses
+          .filter(s => typeof s === "object" && s !== null && (s.excludeFromKPI || s.exclude))
+          .map(s => normalizeText(s.name || s.Status || s.status));
+      }
+    }
+    if (!excludedStatuses.length) {
+      excludedStatuses = ['closed', 'rejected', 'unfit-injury', 'unfit-pcr'];
+    }
+    const excludedSet = new Set(excludedStatuses);
+
+    return allCandidates.filter(c => {
+      const candStatus = normalizeText(c.CurrentStatus || c.Status || c.status);
+      return !excludedSet.has(candStatus);
+    });
+  };
+  window.getActiveCandidates = getActiveCandidates;
+
   const App = {
     normalizeText,
+    getActiveCandidates,
     state: {
       currentUser: { name: '', role: null, email: '' },
       currentView: 'dashboard',
@@ -1181,15 +1211,12 @@
     },
 
     _computeDashboardKpis(candidates, docCompleteness) {
-      candidates = candidates || App.state.candidates || [];
+      const rawCandidates = candidates || App.state.candidates || [];
       docCompleteness = docCompleteness || App.state.docCompleteness || {};
 
-      // Read excluded statuses directly from App.state.settings, with a safe fallback
-      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0)
-        ? App.state.settings.excludedStatuses
-        : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
-
-      const EXCLUDED_KPI_STATUSES = new Set(excludedArray.map(s => normalizeText(s)));
+      // SSOT: Strictly filter active candidates according to dynamic settings exclusion rules
+      const activeCandidates = getActiveCandidates(rawCandidates);
+      const activeCount = activeCandidates.length;
 
       const MISSING_DOC_STATUSES = new Set([
         'new candidate', 'documents requested', 'documents under preparing',
@@ -1197,15 +1224,14 @@
         'pending medical', 'booked a medical examination'
       ]);
 
-      let activeCount = 0, missingDocs = 0, visaPending = 0, visaCompleted = 0;
+      let missingDocs = 0, visaPending = 0, visaCompleted = 0;
       let mobilized = 0, pendingMedical = 0, bookedMedical = 0, docsUnderPreparing = 0;
       let taIssues = 0, renewalPassport = 0, notAvailable = 0, creatingWhatsapp = 0;
       let unfitPcr = 0, unfitInjury = 0, rejected = 0;
 
-      candidates.forEach(c => {
+      activeCandidates.forEach(c => {
         const rawStatus = (c.CurrentStatus || c.Status || '').toString().trim();
         const normStatus = normalizeText(rawStatus);
-        if (!EXCLUDED_KPI_STATUSES.has(normStatus)) activeCount++;
         if (MISSING_DOC_STATUSES.has(normStatus)) missingDocs++;
         if (normStatus === 'visa pending') visaPending++;
         if (normStatus === 'visa completed') visaCompleted++;
@@ -1232,9 +1258,7 @@
         missingCounts[doc] = 0;
       });
 
-      // Filter active candidates (not in excluded statuses)
-      const activeCandidates = candidates.filter(c => !EXCLUDED_KPI_STATUSES.has(normalizeText(c.CurrentStatus || c.Status)));
-      const activeCandidatesCount = activeCandidates.length;
+      const activeCandidatesCount = activeCount;
 
       // Count uploaded documents safely using case-insensitive mapping
       activeCandidates.forEach(c => {
@@ -1280,36 +1304,24 @@
       Views._kpiData = k;
 
       if (typeof Views._renderDashboardKpis === 'function') {
-        const allCands = App.state.candidates || [];
-        const baseCands = Views._selectedBatchFilter
-          ? allCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
-          : allCands;
-        const activeBaseCands = baseCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
-        const activeAllCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
-        Views._renderDashboardKpis(k, activeBaseCands, activeAllCands);
+        const allActive = getActiveCandidates(App.state.candidates || []);
+        const baseActive = Views._selectedBatchFilter
+          ? allActive.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
+          : allActive;
+        Views._renderDashboardKpis(k, baseActive, allActive);
       }
 
       return k;
     },
 
     _renderKpiSectionsWithBatchFilter() {
-      const allCands = App.state.candidates || [];
-      const baseCands = Views._selectedBatchFilter
-        ? allCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
-        : allCands;
+      const allActive = getActiveCandidates(App.state.candidates || []);
+      const baseActive = Views._selectedBatchFilter
+        ? allActive.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(Views._selectedBatchFilter))
+        : allActive;
 
-      // Read excluded statuses directly from App.state.settings, with a safe fallback
-      const excludedArray = (App.state.settings && Array.isArray(App.state.settings.excludedStatuses) && App.state.settings.excludedStatuses.length > 0)
-        ? App.state.settings.excludedStatuses
-        : ['Closed', 'Rejected', 'Unfit-Injury', 'Unfit-PCR'];
-      const EXCLUDED_KPI_STATUSES = new Set(excludedArray);
-
-      const activeBaseCands = baseCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
-      const k = Views._computeDashboardKpis(baseCands, App.state.docCompleteness);
-
-      const activeAllCands = allCands.filter(c => !EXCLUDED_KPI_STATUSES.has(String(c.CurrentStatus || '').trim()));
-
-      Views._renderDashboardKpis(k, activeBaseCands, activeAllCands);
+      const k = Views._computeDashboardKpis(baseActive, App.state.docCompleteness);
+      Views._renderDashboardKpis(k, baseActive, allActive);
     },
 
     _normBatch(v) {
@@ -1352,26 +1364,46 @@
       return false;
     },
     _getBatchCardsHtml(activeCands) {
+      const eligibleCands = getActiveCandidates(activeCands);
       const staffBatches = (App.state.settings && App.state.settings.staffBatches) || [
         'Staff Batch 1', 'Staff Batch 2', 'Staff Batch 3', 'Staff Batch 4', 'Staff Batch 5'
       ];
       const icons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
       const colors = ['blue', 'purple', 'green', 'teal', 'orange', 'cyan', 'pink', 'indigo'];
+
+      // Rebuild Batch Counts strictly from active candidates
+      const batchCounts = {};
+      eligibleCands.forEach(c => {
+        const batchName = Views._normBatch(Views._getBatchValue(c) || 'Unassigned');
+        batchCounts[batchName] = (batchCounts[batchName] || 0) + 1;
+      });
+
       return staffBatches.map((name, idx) => {
-        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(name)).length;
+        const normName = Views._normBatch(name);
+        const count = batchCounts[normName] || 0;
         const icon = icons[idx % icons.length];
         const color = colors[idx % colors.length];
         return Views._kpiTableRow(name, count, icon, color, `Candidates in ${name}`, { type: 'batchNumber', value: name });
       }).join('');
     },
     _getKalhatBatchCardsHtml(activeCands) {
+      const eligibleCands = getActiveCandidates(activeCands);
       const kalhatBatches = (App.state.settings && App.state.settings.kalhatBatches) || [
         'Kalhat Batch 1', 'Kalhat Batch 2'
       ];
       const icons = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣'];
       const colors = ['blue', 'purple', 'green', 'teal'];
+
+      // Rebuild Batch Counts strictly from active candidates
+      const batchCounts = {};
+      eligibleCands.forEach(c => {
+        const batchName = Views._normBatch(Views._getBatchValue(c) || 'Unassigned');
+        batchCounts[batchName] = (batchCounts[batchName] || 0) + 1;
+      });
+
       return kalhatBatches.map((name, idx) => {
-        const count = activeCands.filter(c => Views._normBatch(Views._getBatchValue(c)) === Views._normBatch(name)).length;
+        const normName = Views._normBatch(name);
+        const count = batchCounts[normName] || 0;
         const icon = icons[idx % icons.length];
         const color = colors[idx % colors.length];
         return Views._kpiTableRow(name, count, icon, color, `Candidates in ${name}`, { type: 'batchNumber', value: name });
@@ -1379,8 +1411,11 @@
     },
 
     _renderDashboardKpis(k, activeCands, activeAllCands) {
-      const internalCount = activeCands.filter(c => String(c.Recruitment_Type || '').trim() === 'Internal').length;
-      const externalCount = activeCands.filter(c => String(c.Recruitment_Type || '').trim() === 'External').length;
+      const safeActive = getActiveCandidates(activeCands);
+      const safeAllActive = getActiveCandidates(activeAllCands);
+
+      const internalCount = safeActive.filter(c => normalizeText(c.Recruitment_Type) === 'internal').length;
+      const externalCount = safeActive.filter(c => normalizeText(c.Recruitment_Type) === 'external').length;
 
       // Column 1: Status Overview (Summary + All mobilization stages)
       const statusEl = document.getElementById('kpi-grid-status');
@@ -1407,11 +1442,11 @@
       // Column 2: Batches Overview
       const batchEl = document.getElementById('kpi-grid-batch');
       if (batchEl) {
-        batchEl.innerHTML = Views._getBatchCardsHtml(activeAllCands);
+        batchEl.innerHTML = Views._getBatchCardsHtml(safeAllActive);
       }
       const kalhatBatchEl = document.getElementById('kpi-grid-kalhat-batch');
       if (kalhatBatchEl) {
-        kalhatBatchEl.innerHTML = Views._getKalhatBatchCardsHtml(activeAllCands);
+        kalhatBatchEl.innerHTML = Views._getKalhatBatchCardsHtml(safeAllActive);
       }
 
       // Column 3: Document Completeness (WITH Document and MISSING Document)
