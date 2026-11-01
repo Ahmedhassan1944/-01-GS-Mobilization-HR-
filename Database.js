@@ -1031,6 +1031,13 @@ function getOrCreateSettingsFromDb_() {
 /**
  * Public: Retrieves system settings from CacheService or database.
  */
+/**
+ * Public: Alias for api_getSystemSettings to support both naming conventions seamlessly.
+ */
+function api_getSettings() {
+  return api_getSystemSettings();
+}
+
 function api_getSystemSettings() {
   try {
     const cache = CacheService.getScriptCache();

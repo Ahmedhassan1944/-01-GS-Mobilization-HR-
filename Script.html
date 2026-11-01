@@ -41,6 +41,7 @@
       excludeStatusFilters: [], // [] = none excluded; otherwise statuses to HIDE
       docFilters: [],           // array of doc-type strings meaning "missing these"
       // ── System Configuration Settings (Defaults) ───────────
+      settingsLoaded: false,
       settings: {
         staffBatches: [
           'Staff Batch 1',
@@ -140,6 +141,42 @@
 
     setState(partial) {
       Object.assign(this.state, partial);
+    },
+
+    _settingsFetchPromise: null,
+
+    async fetchSystemSettings(force = false) {
+      if (this.state.settingsLoaded && !force) {
+        return Promise.resolve(this.state.settings);
+      }
+      if (this._settingsFetchPromise && !force) {
+        return this._settingsFetchPromise;
+      }
+      this._settingsFetchPromise = (async () => {
+        try {
+          const res = await GAS.call('api_getSystemSettings');
+          if (res && res.success && res.data) {
+            this.setState({ settings: res.data, settingsLoaded: true });
+            if (this.state.currentView === 'settings') {
+              const view = document.getElementById('app-view');
+              if (view) Views.settings(view);
+            } else if (this.state.currentView === 'dashboard') {
+              if (typeof Views._computeDashboardKpis === 'function' && typeof Views._renderDashboardTables === 'function') {
+                Views._computeDashboardKpis();
+                Views._renderDashboardTables();
+              }
+            }
+            return res.data;
+          }
+          return this.state.settings;
+        } catch (err) {
+          console.warn('[Settings] Failed to fetch system settings:', err);
+          return this.state.settings;
+        } finally {
+          this._settingsFetchPromise = null;
+        }
+      })();
+      return this._settingsFetchPromise;
     },
 
     toggleSidebar(forceState) {
@@ -298,7 +335,7 @@
           missingMedicalExam: 14, missingMedicalAnalysis: 16, missingVisa: 18, missingCV: 9,
         }
       };
-      if (fnName === 'api_getSystemSettings') return { success: true, data: App.state.settings };
+      if (fnName === 'api_getSystemSettings' || fnName === 'api_getSettings') return { success: true, data: App.state.settings };
       if (fnName === 'api_updateSystemSettings') {
         const [cat, items] = args;
         if (cat && items) {
@@ -6256,7 +6293,7 @@
           <p class="page-header__sub">Configure batches, mobilization statuses, document requirements, and enterprise metadata dynamically without code modifications.</p>
         </div>
         <div class="page-header__actions">
-          <button class="btn btn--outline btn--sm" onclick="Views._reloadSettingsFromBackend()">
+          <button class="btn btn--outline btn--sm" id="btn-reload-settings" onclick="Views._reloadSettingsFromBackend()">
             🔄 Reload from Database
           </button>
         </div>
@@ -6271,6 +6308,11 @@
         ${Views._renderSettingsCardHtml('nationalities', '🌍 Nationalities', 'Manage selectable candidate nationalities.', App.state.settings?.nationalities || [], 'e.g. Tunisian')}
         ${Views._renderSettingsCardHtml('positions', '💼 Job Positions', 'Manage common candidate job positions.', App.state.settings?.positions || [], 'e.g. QA/QC Inspector')}
       </div>`;
+
+      // Auto-hydrate settings if not yet loaded from backend
+      if (!App.state.settingsLoaded) {
+        App.fetchSystemSettings(false);
+      }
     },
 
     _renderSettingsCardHtml(categoryKey, title, description, items, placeholder) {
@@ -6500,7 +6542,7 @@
 
         if (res && res.success) {
           // 4. Update memory safely with backend-sanitized result
-          App.setState({ settings: res.settings });
+          App.setState({ settings: res.settings, settingsLoaded: true });
           Toast.success('Settings saved successfully');
         } else {
           throw new Error(res.error || 'Backend save failed');
@@ -6519,20 +6561,28 @@
       }
     },
 
-    async _reloadSettingsFromBackend() {
+    async _reloadSettingsFromBackend(silent = false) {
+      const btn = document.getElementById('btn-reload-settings');
+      if (btn && !silent) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner spinner--sm"></span> Reloading…`;
+      }
       try {
-        Toast.info('Reloading settings from database…');
-        const res = await GAS.call('api_getSystemSettings');
-        if (res && res.success && res.data) {
-          App.setState({ settings: res.data });
-          const view = document.getElementById('app-view');
-          if (view) Views.settings(view);
-          Toast.success('Settings synchronized successfully.');
-        } else {
-          throw new Error(res?.error || 'Unknown error');
+        if (!silent) Toast.info('Reloading settings from database…');
+        await App.fetchSystemSettings(true);
+        const view = document.getElementById('app-view');
+        if (view && App.state.currentView === 'settings') {
+          Views.settings(view);
         }
+        if (!silent) Toast.success('Settings synchronized successfully.');
       } catch (err) {
-        Toast.error('Reload failed: ' + err.message);
+        if (!silent) Toast.error('Reload failed: ' + (err.message || 'Unknown error'));
+        console.error('[Settings] Reload failed:', err);
+      } finally {
+        if (btn && !silent) {
+          btn.disabled = false;
+          btn.innerHTML = `🔄 Reload from Database`;
+        }
       }
     }
   };
@@ -6798,6 +6848,11 @@
   // ─────────────────────────────────────────────
 
   const initApp = () => {
+    // Auto-hydrate system settings in the background on initial app bootstrap
+    App.fetchSystemSettings(false).catch(err => {
+      console.warn('[Settings] Background fetch failed on init:', err);
+    });
+
     // Fetch real user role first — RBAC controls depend on this
     GAS.call('api_getCurrentUser')
       .then(result => {
