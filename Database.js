@@ -181,10 +181,13 @@ function api_getAllCandidates() {
         }
       }
 
-      const REQUIRED_DOCS = [
-        'Passport', 'Photo', 'Academic Certificate',
-        'Medical Examination', 'Medical Analysis', 'Visa', 'CV'
-      ];
+      const settings = (typeof api_getSystemSettings === 'function' ? api_getSystemSettings().data : null) || DEFAULT_SYSTEM_SETTINGS;
+      const REQUIRED_DOCS = (settings && Array.isArray(settings.documentTypes) && settings.documentTypes.length > 0)
+        ? settings.documentTypes
+        : [
+          'Passport', 'Photo', 'Academic Certificate',
+          'Medical Examination', 'Medical Analysis', 'Visa', 'CV'
+        ];
 
       candidates.forEach(cand => {
         const candDocs = approvedDocsByCand[cand.CandidateID] || {};
@@ -198,7 +201,7 @@ function api_getAllCandidates() {
           status: 'ok',
           presentDocs: presentDocs,
           missingDocs: missingDocs,
-          pct: Math.round((presentDocs.length / 7) * 100)
+          pct: REQUIRED_DOCS.length > 0 ? Math.round((presentDocs.length / REQUIRED_DOCS.length) * 100) : 100
         };
       });
     } catch (docErr) {

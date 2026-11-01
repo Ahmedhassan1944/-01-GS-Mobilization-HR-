@@ -572,6 +572,16 @@
   // in the Candidates list view.
   // ─────────────────────────────────────────────
 
+  /**
+   * SSOT: Dynamic required document types resolved from App.state.settings
+   */
+  const getRequiredDocs = () => {
+    const list = (App.state.settings && Array.isArray(App.state.settings.documentTypes) && App.state.settings.documentTypes.length > 0)
+      ? App.state.settings.documentTypes
+      : ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
+    return [...list];
+  };
+
   const REQUIRED_DOCS = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
 
   /**
@@ -610,9 +620,10 @@
           return DOC_TYPE_ALIASES[raw.toLowerCase()] ?? raw;
         })
     );
-    const presentDocs = REQUIRED_DOCS.filter(req => uploadedTypes.has(req));
-    const missingDocs = REQUIRED_DOCS.filter(req => !uploadedTypes.has(req));
-    const pct = Math.round((presentDocs.length / REQUIRED_DOCS.length) * 100);
+    const requiredDocs = getRequiredDocs();
+    const presentDocs = requiredDocs.filter(req => uploadedTypes.has(req));
+    const missingDocs = requiredDocs.filter(req => !uploadedTypes.has(req));
+    const pct = requiredDocs.length > 0 ? Math.round((presentDocs.length / requiredDocs.length) * 100) : 100;
     return { status: 'ok', pct, missingDocs, presentDocs };
   };
 
@@ -1189,9 +1200,9 @@
         if (status === 'Rejected') rejected++;
       });
 
-      const REQUIRED_DOCS = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
+      const requiredDocs = getRequiredDocs();
       const hasCount = {}, missingCount = {};
-      REQUIRED_DOCS.forEach(dt => { hasCount[dt] = 0; missingCount[dt] = 0; });
+      requiredDocs.forEach(dt => { hasCount[dt] = 0; missingCount[dt] = 0; });
 
       candidates.forEach(c => {
         const status = (c.CurrentStatus || '').trim();
@@ -1199,12 +1210,12 @@
 
         const comp = docCompleteness && docCompleteness[c.CandidateID];
         if (comp) {
-          REQUIRED_DOCS.forEach(dt => {
+          requiredDocs.forEach(dt => {
             if (comp.presentDocs.includes(dt)) hasCount[dt]++;
             else missingCount[dt]++;
           });
         } else {
-          REQUIRED_DOCS.forEach(dt => missingCount[dt]++);
+          requiredDocs.forEach(dt => missingCount[dt]++);
         }
       });
 
@@ -1359,30 +1370,29 @@
       }
 
       // Column 3: Document Completeness (WITH Document and MISSING Document)
+      const requiredDocs = getRequiredDocs();
+      const getDocIcon = (dt) => {
+        const icons = {
+          'Passport': '🛂', 'Photo': '📷', 'Academic Certificate': '🎓',
+          'Medical Examination': '🩺', 'Medical Analysis': '🧪', 'Visa': '🌍', 'CV': '📄'
+        };
+        return icons[dt] || '📄';
+      };
+
       const hasEl = document.getElementById('kpi-grid-has');
       if (hasEl) {
-        hasEl.innerHTML = [
-          Views._kpiTableRow('Passport', k.hasPassport ?? '--', '🛂', 'green', 'Passport uploaded & valid', { type: 'hasDoc', value: 'Passport' }),
-          Views._kpiTableRow('Photo', k.hasPhoto ?? '--', '📷', 'green', 'Photo uploaded & valid', { type: 'hasDoc', value: 'Photo' }),
-          Views._kpiTableRow('Academic Certificate', k.hasAcademicCert ?? '--', '🎓', 'green', 'Academic certificate uploaded', { type: 'hasDoc', value: 'Academic Certificate' }),
-          Views._kpiTableRow('Medical Examination', k.hasMedicalExam ?? '--', '🩺', 'green', 'Medical examination uploaded', { type: 'hasDoc', value: 'Medical Examination' }),
-          Views._kpiTableRow('Medical Analysis', k.hasMedicalAnalysis ?? '--', '🧪', 'green', 'Medical analysis uploaded', { type: 'hasDoc', value: 'Medical Analysis' }),
-          Views._kpiTableRow('Visa', k.hasVisa ?? '--', '🌍', 'green', 'Visa document uploaded', { type: 'hasDoc', value: 'Visa' }),
-          Views._kpiTableRow('CV', k.hasCV ?? '--', '📄', 'green', 'CV uploaded', { type: 'hasDoc', value: 'CV' })
-        ].join('');
+        hasEl.innerHTML = requiredDocs.map(dt => {
+          const count = k.hasCount ? (k.hasCount[dt] ?? '--') : (k[`has${dt.replace(/\s+/g, '')}`] ?? '--');
+          return Views._kpiTableRow(dt, count, getDocIcon(dt), 'green', `${dt} uploaded & valid`, { type: 'hasDoc', value: dt });
+        }).join('');
       }
 
       const missingEl = document.getElementById('kpi-grid-missing');
       if (missingEl) {
-        missingEl.innerHTML = [
-          Views._kpiTableRow('Passport', k.missingPassport ?? '--', '🛂', 'red', 'No valid passport', { type: 'missingDoc', value: 'Passport' }),
-          Views._kpiTableRow('Photo', k.missingPhoto ?? '--', '📷', 'red', 'No valid photo', { type: 'missingDoc', value: 'Photo' }),
-          Views._kpiTableRow('Academic Certificate', k.missingAcademicCert ?? '--', '🎓', 'red', 'No academic certificate', { type: 'missingDoc', value: 'Academic Certificate' }),
-          Views._kpiTableRow('Medical Examination', k.missingMedicalExam ?? '--', '🩺', 'red', 'No medical examination', { type: 'missingDoc', value: 'Medical Examination' }),
-          Views._kpiTableRow('Medical Analysis', k.missingMedicalAnalysis ?? '--', '🧪', 'red', 'No medical analysis', { type: 'missingDoc', value: 'Medical Analysis' }),
-          Views._kpiTableRow('Visa', k.missingVisa ?? '--', '🌍', 'red', 'No visa document', { type: 'missingDoc', value: 'Visa' }),
-          Views._kpiTableRow('CV', k.missingCV ?? '--', '📄', 'red', 'No CV', { type: 'missingDoc', value: 'CV' })
-        ].join('');
+        missingEl.innerHTML = requiredDocs.map(dt => {
+          const count = k.missingCount ? (k.missingCount[dt] ?? '--') : (k[`missing${dt.replace(/\s+/g, '')}`] ?? '--');
+          return Views._kpiTableRow(dt, count, getDocIcon(dt), 'red', `No valid ${dt.toLowerCase()}`, { type: 'missingDoc', value: dt });
+        }).join('');
       }
 
       Views._restoreDashboardFilterState();
@@ -2404,8 +2414,9 @@
           valA = docCompleteness[a.CandidateID]?.pct ?? -1;
           valB = docCompleteness[b.CandidateID]?.pct ?? -1;
         } else if (col === 'missingCount') {
-          valA = docCompleteness[a.CandidateID]?.missingDocs?.length ?? REQUIRED_DOCS.length;
-          valB = docCompleteness[b.CandidateID]?.missingDocs?.length ?? REQUIRED_DOCS.length;
+          const reqLen = getRequiredDocs().length;
+          valA = docCompleteness[a.CandidateID]?.missingDocs?.length ?? reqLen;
+          valB = docCompleteness[b.CandidateID]?.missingDocs?.length ?? reqLen;
         } else if (col === 'CreatedAt') {
           valA = new Date(a.CreatedAt || 0).getTime();
           valB = new Date(b.CreatedAt || 0).getTime();
@@ -2501,7 +2512,7 @@
     _onDocCheckChange() {
       const checked = [...document.querySelectorAll('.doc-check:checked')].map(el => el.value);
       App.setState({ docFilters: checked });
-      ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'].forEach(doc => {
+      getRequiredDocs().forEach(doc => {
         const btn = document.getElementById(`qf-doc-${doc.replace(/\s/g, '_')}`);
         if (btn) {
           btn.classList.toggle('quick-filter-btn--active', checked.includes(doc));
@@ -2608,7 +2619,7 @@
       document.querySelectorAll('.dash-doc-check').forEach(cb => {
         cb.checked = Views._dashDocFilters.includes(cb.value);
       });
-      ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'].forEach(doc => {
+      getRequiredDocs().forEach(doc => {
         const btn = document.getElementById(`dash-qf-doc-${doc.replace(/\s/g, '_')}`);
         if (btn) {
           const on = Views._dashDocFilters.includes(doc);
@@ -2686,7 +2697,7 @@
       document.querySelectorAll('.doc-check').forEach(cb => {
         cb.checked = App.state.docFilters.includes(cb.value);
       });
-      ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'].forEach(doc => {
+      getRequiredDocs().forEach(doc => {
         const btn = document.getElementById(`qf-doc-${doc.replace(/\s/g, '_')}`);
         if (btn) {
           const on = App.state.docFilters.includes(doc);
@@ -3681,7 +3692,6 @@
     },
 
     _openUploadModal(candidateId, folderId, preselectedDocType = '') {
-      const docTypes = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV', 'Other'];
       Modal.open(`
       <div class="modal__header">
         <h2 class="modal__title">📤 Upload Document</h2>
@@ -3691,8 +3701,7 @@
         <div class="form-grid" style="gap:var(--sp-3)">
           <div class="form-group">
             <label class="form-label" for="doc-type">Document Type <span class="required">*</span></label>
-            <select class="form-select" id="doc-type">
-              ${docTypes.map(t => `<option value="${t}" ${t === preselectedDocType ? 'selected' : ''}>${t}</option>`).join('')}
+            <select class="form-select" id="doc-type" name="upload-doc-type">
             </select>
           </div>
           <div class="form-group">
@@ -3723,6 +3732,27 @@
         <button class="btn btn--primary" id="upload-btn"
                 onclick="Views._submitUpload('${candidateId}','${folderId}')">Upload</button>
       </div>`);
+
+      // Dynamically populate document types dropdown from Settings SSOT using DocumentFragment
+      const selectEl = document.getElementById('doc-type');
+      if (selectEl) {
+        const rawTypes = getRequiredDocs();
+        const docTypesList = [...rawTypes];
+        if (!docTypesList.includes('Other')) docTypesList.push('Other');
+        if (preselectedDocType && !docTypesList.includes(preselectedDocType)) {
+          docTypesList.push(preselectedDocType);
+        }
+
+        const fragment = document.createDocumentFragment();
+        docTypesList.forEach(t => {
+          const opt = document.createElement('option');
+          opt.value = t;
+          opt.textContent = t;
+          if (t === preselectedDocType) opt.selected = true;
+          fragment.appendChild(opt);
+        });
+        selectEl.appendChild(fragment);
+      }
     },
 
     _onFileSelect(input) {
@@ -4817,7 +4847,7 @@
     <div class="table-card" style="margin-bottom:var(--sp-3);padding:var(--sp-3);">
       <div style="font-size:.8rem;font-weight:600;color:var(--text-secondary);margin-bottom:var(--sp-2);">SELECT DOCUMENT TYPES TO DOWNLOAD</div>
       <div id="dc-doctype-selector" style="display:flex;gap:var(--sp-2);flex-wrap:wrap;">
-        ${['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'].map(t => `
+        ${getRequiredDocs().map(t => `
           <label style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;padding:6px 12px;border:1.5px solid var(--border);border-radius:8px;font-size:.82rem;transition:all .15s;" class="dc-doctype-chip">
             <input type="checkbox" class="dc-doctype-check" value="${t}" onchange="Views._dcUpdateDownloadBtn()">
             <span>${t}</span>

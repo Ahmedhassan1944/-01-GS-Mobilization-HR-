@@ -157,10 +157,14 @@ function api_getDocumentsCenterData(filtersJson) {
       }
     }
 
-    var docTypesList = [
-      'Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 
-      'Medical Analysis', 'Visa', 'CV'
-    ];
+    var settingsRes = typeof api_getSystemSettings === 'function' ? api_getSystemSettings() : null;
+    var settingsData = (settingsRes && settingsRes.success && settingsRes.data) ? settingsRes.data : null;
+    var docTypesList = (settingsData && Array.isArray(settingsData.documentTypes) && settingsData.documentTypes.length > 0)
+      ? settingsData.documentTypes
+      : [
+        'Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 
+        'Medical Analysis', 'Visa', 'CV'
+      ];
     
     var totalAvailable = 0;
     var totalMissing = 0;
