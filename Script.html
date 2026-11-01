@@ -1218,34 +1218,33 @@
       const activeCandidates = getActiveCandidates(rawCandidates);
       const activeCount = activeCandidates.length;
 
+      // ── Dynamic Status Counts (SSOT: App.state.settings.statuses) ──────────
+      const settingsStatuses = (App.state.settings && App.state.settings.statuses) || [];
+      // Build a map: normalized status name → original name for reliable lookup
+      const statusNormMap = {}; // normalizedKey → originalName
+      settingsStatuses.forEach(s => { statusNormMap[normalizeText(s)] = s; });
+
+      // Initialize all counters to zero
+      const statusCounts = {};
+      settingsStatuses.forEach(s => { statusCounts[s] = 0; });
+
+      let missingDocs = 0;
       const MISSING_DOC_STATUSES = new Set([
         'new candidate', 'documents requested', 'documents under preparing',
         'pending passport', 'pending photo', 'pending academic certificate',
         'pending medical', 'booked a medical examination'
       ]);
 
-      let missingDocs = 0, visaPending = 0, visaCompleted = 0;
-      let mobilized = 0, pendingMedical = 0, bookedMedical = 0, docsUnderPreparing = 0;
-      let taIssues = 0, renewalPassport = 0, notAvailable = 0, creatingWhatsapp = 0;
-      let unfitPcr = 0, unfitInjury = 0, rejected = 0;
-
       activeCandidates.forEach(c => {
         const rawStatus = (c.CurrentStatus || c.Status || '').toString().trim();
         const normStatus = normalizeText(rawStatus);
+        // Count against dynamic settings statuses
+        const matchedOriginal = statusNormMap[normStatus];
+        if (matchedOriginal !== undefined) {
+          statusCounts[matchedOriginal]++;
+        }
+        // Keep legacy missingDocs counter for backward compatibility
         if (MISSING_DOC_STATUSES.has(normStatus)) missingDocs++;
-        if (normStatus === 'visa pending') visaPending++;
-        if (normStatus === 'visa completed') visaCompleted++;
-        if (normStatus === 'mobilized') mobilized++;
-        if (normStatus === 'pending medical') pendingMedical++;
-        if (normStatus === 'booked a medical examination') bookedMedical++;
-        if (normStatus === 'documents under preparing') docsUnderPreparing++;
-        if (normStatus === 'talent acquisition issues') taIssues++;
-        if (normStatus === 'renewal passport') renewalPassport++;
-        if (normStatus === 'not available') notAvailable++;
-        if (normStatus === 'creating whatsapp group') creatingWhatsapp++;
-        if (normStatus === 'unfit-pcr') unfitPcr++;
-        if (normStatus === 'unfit-injury') unfitInjury++;
-        if (normStatus === 'rejected') rejected++;
       });
 
       const requiredDocs = getRequiredDocs();
@@ -1287,10 +1286,9 @@
       });
 
       const k = {
-        activeCount, missingDocs, visaPending, visaCompleted, mobilized,
-        pendingMedical, bookedMedical, docsUnderPreparing,
-        taIssues, renewalPassport, notAvailable, creatingWhatsapp,
-        unfitPcr, unfitInjury, rejected,
+        activeCount,
+        missingDocs,
+        statusCounts,  // Dynamic: keyed by original status name from settings
         hasCount: withCounts,
         missingCount: missingCounts
       };
@@ -1417,26 +1415,64 @@
       const internalCount = safeActive.filter(c => normalizeText(c.Recruitment_Type) === 'internal').length;
       const externalCount = safeActive.filter(c => normalizeText(c.Recruitment_Type) === 'external').length;
 
-      // Column 1: Status Overview (Summary + All mobilization stages)
+      // Column 1: Status Overview — Fully Dynamic (SSOT: App.state.settings.statuses)
       const statusEl = document.getElementById('kpi-grid-status');
       if (statusEl) {
-        statusEl.innerHTML = [
-          Views._kpiTableRow('Active Cases', k.activeCount ?? 0, '🏗️', 'blue', 'All non-closed cases', null),
+        const settingsStatusList = (App.state.settings && App.state.settings.statuses) || [];
+        const statusCountsMap = k.statusCounts || {};
+
+        /**
+         * Resolve a Bootstrap-compatible icon class and semantic color token
+         * for a given pipeline status name using keyword heuristics.
+         * Falls back to a neutral tag icon for unrecognized statuses.
+         *
+         * @param {string} statusName - Original status name from settings
+         * @returns {{ icon: string, color: string }}
+         */
+        const resolveStatusMeta = (statusName) => {
+          const n = normalizeText(statusName);
+          if (n.includes('medical') && n.includes('book')) return { icon: '📅', color: 'blue' };
+          if (n.includes('medical') && (n.includes('pending') || n.includes('unfit'))) return { icon: '🩺', color: 'orange' };
+          if (n.includes('unfit') && n.includes('pcr')) return { icon: '🧪', color: 'red' };
+          if (n.includes('unfit') && n.includes('injur')) return { icon: '🩹', color: 'red' };
+          if (n.includes('unfit')) return { icon: '🩺', color: 'red' };
+          if (n.includes('visa') && n.includes('complet')) return { icon: '✅', color: 'green' };
+          if (n.includes('visa') && n.includes('pending')) return { icon: '🛂', color: 'red' };
+          if (n.includes('visa') || n.includes('passport')) return { icon: '🛂', color: 'blue' };
+          if (n.includes('docs') || n.includes('document')) return { icon: '📝', color: 'orange' };
+          if (n.includes('reject')) return { icon: '❌', color: 'red' };
+          if (n.includes('close')) return { icon: '🔒', color: 'gray' };
+          if (n.includes('whatsapp') || n.includes('contact')) return { icon: '💬', color: 'green' };
+          if (n.includes('talent') || n.includes('acquisition')) return { icon: '⚠️', color: 'orange' };
+          if (n.includes('mobiliz')) return { icon: '✈️', color: 'green' };
+          if (n.includes('not available') || n.includes('unavailable')) return { icon: '🚫', color: 'gray' };
+          if (n.includes('new') || n.includes('candidate')) return { icon: '🆕', color: 'blue' };
+          if (n.includes('complet')) return { icon: '✅', color: 'green' };
+          if (n.includes('pending')) return { icon: '⏳', color: 'orange' };
+          return { icon: '🏷️', color: 'gray' }; // universal fallback
+        };
+
+        // Build HTML: 3 fixed Meta KPI rows + N dynamic status rows from settings
+        const metaRows = [
+          Views._kpiTableRow('Active Cases', k.activeCount ?? 0, '🏗️', 'blue', 'All non-excluded cases', null),
           Views._kpiTableRow('Internal Candidates', internalCount, '🏢', 'blue', 'Internally recruited', { type: 'recruitmentType', value: 'Internal' }),
           Views._kpiTableRow('External Candidates', externalCount, '🌐', 'orange', 'Externally recruited', { type: 'recruitmentType', value: 'External' }),
-          Views._kpiTableRow('Pending Medical', k.pendingMedical ?? 0, '🩺', 'orange', 'Awaiting medical docs', { type: 'status', value: 'Pending Medical' }),
-          Views._kpiTableRow('Booked Medical Exam', k.bookedMedical ?? 0, '📅', 'blue', 'Medical exam appointment set', { type: 'status', value: 'Booked a medical examination' }),
-          Views._kpiTableRow('Docs Under Preparing', k.docsUnderPreparing ?? 0, '📝', 'orange', 'Documents being prepared', { type: 'status', value: 'Documents Under Preparing' }),
-          Views._kpiTableRow('Visa Pending', k.visaPending ?? 0, '🛂', 'red', 'Awaiting visa issuance', { type: 'status', value: 'Visa Pending' }),
-          Views._kpiTableRow('Visa Completed', k.visaCompleted ?? 0, '✅', 'green', 'Visa issued', { type: 'status', value: 'Visa Completed' }),
-          Views._kpiTableRow('Talent Acquisition Issues', k.taIssues ?? 0, '⚠️', 'orange', 'Talent Acquisition Issues', { type: 'status', value: 'Talent Acquisition Issues' }),
-          Views._kpiTableRow('Renewal Passport', k.renewalPassport ?? 0, '🛂', 'blue', 'Renewal Passport', { type: 'status', value: 'Renewal Passport' }),
-          Views._kpiTableRow('Not Available', k.notAvailable ?? 0, '🚫', 'gray', 'Not Available', { type: 'status', value: 'Not Available' }),
-          Views._kpiTableRow('Creating WhatsApp Group', k.creatingWhatsapp ?? 0, '💬', 'green', 'Creating WhatsApp Group', { type: 'status', value: 'Creating WhatsApp Group' }),
-          Views._kpiTableRow('Unfit-PCR', k.unfitPcr ?? 0, '🧪', 'red', 'Unfit-PCR', { type: 'status', value: 'Unfit-PCR' }),
-          Views._kpiTableRow('Unfit-Injury', k.unfitInjury ?? 0, '🩹', 'red', 'Unfit-Injury', { type: 'status', value: 'Unfit-Injury' }),
-          Views._kpiTableRow('Rejected', k.rejected ?? 0, '❌', 'red', 'Rejected', { type: 'status', value: 'Rejected' })
-        ].join('');
+        ];
+
+        const dynamicStatusRows = settingsStatusList.map(statusName => {
+          const count = statusCountsMap[statusName] ?? 0;
+          const { icon, color } = resolveStatusMeta(statusName);
+          return Views._kpiTableRow(
+            statusName,
+            count,
+            icon,
+            color,
+            statusName,
+            { type: 'status', value: statusName }
+          );
+        });
+
+        statusEl.innerHTML = [...metaRows, ...dynamicStatusRows].join('');
       }
 
       // Column 2: Batches Overview
