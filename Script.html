@@ -398,7 +398,12 @@
       if (fnName === 'api_getAllCandidates') return { success: true, data: candidates };
       if (fnName === 'api_createCandidate') return { success: true, candidateId: 'new-' + Date.now() };
       if (fnName === 'api_updateCandidateStatus') return { success: true };
-      if (fnName === 'api_updateCandidateDetails') return { success: true };
+      if (fnName === 'api_updateCandidateDetails') {
+        const [candId, updates] = args;
+        const cand = candidates.find(c => c.CandidateID === candId);
+        if (cand && updates) Object.assign(cand, updates);
+        return { success: true };
+      }
       if (fnName === 'api_getDocumentsByCandidate') return { success: true, data: documents.filter(d => d.CandidateID === args[0]) };
       if (fnName === 'api_getDocumentsCenterData') {
         const filters = args[0] ? JSON.parse(args[0]) : {};
@@ -3712,8 +3717,8 @@
     },
 
     _openEditProfileModal(candidateId) {
-      const c = App.state.candidates.find(cand => cand.CandidateID === candidateId);
-      if (!c) return;
+      const c = (App.state.candidates || []).find(cand => cand.CandidateID === candidateId) || App.state.selectedCandidate || {};
+      if (!c || !c.CandidateID) return;
 
       Modal.open(`
       <div class="modal__header">
@@ -3721,12 +3726,60 @@
         <button class="modal__close" onclick="Modal.close()" aria-label="Close">✕</button>
       </div>
       <div class="modal__body">
-        <p style="margin-bottom:var(--sp-3);color:var(--text-secondary)">Editing details for <strong>${escHtml(c.FullName)}</strong></p>
+        <p style="margin-bottom:var(--sp-3);color:var(--text-secondary)">Editing core details for <strong>${escHtml(c.FullName || candidateId)}</strong></p>
         <div class="form-grid">
+          <!-- Full Name -->
+          <div class="form-group col-span-2">
+            <label class="form-label" for="edit-fullname">Full Name <span class="required">*</span></label>
+            <input type="text" class="form-input" id="edit-fullname" value="${escHtml(c.FullName || '')}" required placeholder="e.g. Ahmed Ali" />
+          </div>
+
+          <!-- HR Code & Position -->
+          <div class="form-group">
+            <label class="form-label" for="edit-hrcode">HR Code</label>
+            <input type="text" class="form-input" id="edit-hrcode" value="${escHtml(c.HR_Code || c.HRCode || '')}" placeholder="e.g. HR-00123" />
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-position">Position <span class="required">*</span></label>
+            <input type="text" class="form-input" id="edit-position" value="${escHtml(c.Position || '')}" required placeholder="e.g. Civil Engineer" />
+          </div>
+
+          <!-- Department & Email -->
+          <div class="form-group">
+            <label class="form-label" for="edit-department">Department <span class="required">*</span></label>
+            <select class="form-select" id="edit-department" required>
+              <option value="">Select department…</option>
+              ${(App.state.settings?.departments || ['Projects', 'Maintenance', 'Finance', 'HR', 'Operations', 'IT', 'Safety']).map(d => `<option value="${escHtml(d)}" ${normalizeText(c.Department) === normalizeText(d) ? 'selected' : ''}>${escHtml(d)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-email">Email Address <span class="required">*</span></label>
+            <input type="email" class="form-input" id="edit-email" value="${escHtml(c.Email || '')}" required placeholder="e.g. candidate@example.com" />
+          </div>
+
+          <!-- Recruitment Type & Classification -->
+          <div class="form-group">
+            <label class="form-label" for="edit-recruitment-type">Recruitment Type</label>
+            <select class="form-select" id="edit-recruitment-type">
+              <option value="">— Not specified —</option>
+              ${(App.state.settings?.recruitmentTypes || ['Internal', 'External']).map(rt => `<option value="${escHtml(rt)}" ${normalizeText(c.Recruitment_Type) === normalizeText(rt) ? 'selected' : ''}>${escHtml(rt)}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="edit-classification">Classification</label>
+            <select class="form-select" id="edit-classification">
+              <option value="">— Select Classification —</option>
+              ${(App.state.settings?.classifications || ['Engineers', 'Labors and Technicians']).map(cl => `<option value="${escHtml(cl)}" ${normalizeText(c.Classification || c.classification) === normalizeText(cl) ? 'selected' : ''}>${escHtml(cl)}</option>`).join('')}
+            </select>
+          </div>
+
+          <!-- Phone Number -->
           <div class="form-group col-span-2">
             <label class="form-label" for="edit-phone">Phone Number <span class="required">*</span></label>
-            <input type="tel" class="form-input" id="edit-phone" value="${escHtml(c.Phone || '')}" required />
+            <input type="tel" class="form-input" id="edit-phone" value="${escHtml(c.Phone || '')}" required placeholder="+201012345678" />
           </div>
+
+          <!-- Batch Number -->
           <div class="form-group col-span-2">
             <label class="form-label" for="edit-batch">Batch Number</label>
             <select class="form-select" id="edit-batch">
@@ -3739,10 +3792,14 @@
               </optgroup>
             </select>
           </div>
+
+          <!-- Notes -->
           <div class="form-group col-span-2">
             <label class="form-label" for="edit-notes">Notes</label>
-            <textarea class="form-textarea" id="edit-notes" rows="4" placeholder="Add additional instructions or remarks...">${escHtml(c.Notes || '')}</textarea>
+            <textarea class="form-textarea" id="edit-notes" rows="3" placeholder="Add additional instructions or remarks...">${escHtml(c.Notes || '')}</textarea>
           </div>
+
+          <!-- Local File Paths -->
           <div class="form-group col-span-2">
             <label class="form-label">Local File Paths</label>
             <div id="edit-local-paths-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:8px"></div>
@@ -3833,32 +3890,90 @@
     },
 
     async _submitEditProfile(candidateId) {
+      const fullName = document.getElementById('edit-fullname')?.value?.trim();
+      const hrCode = document.getElementById('edit-hrcode')?.value?.trim() || '';
+      const position = document.getElementById('edit-position')?.value?.trim();
+      const department = document.getElementById('edit-department')?.value?.trim();
+      const email = document.getElementById('edit-email')?.value?.trim();
+      const recruitmentType = document.getElementById('edit-recruitment-type')?.value?.trim() || '';
+      const classification = document.getElementById('edit-classification')?.value?.trim() || '';
       const phone = document.getElementById('edit-phone')?.value?.trim();
-      const notes = document.getElementById('edit-notes')?.value?.trim();
       const batchNumber = document.getElementById('edit-batch')?.value?.trim() || '';
+      const notes = document.getElementById('edit-notes')?.value?.trim() || '';
 
-      if (!phone) { Toast.warning('Phone number is required.'); return; }
+      if (!fullName) { Toast.warning('Full Name is required.'); return; }
+      if (!phone) { Toast.warning('Phone Number is required.'); return; }
+      if (!position) { Toast.warning('Position is required.'); return; }
+      if (!department) { Toast.warning('Department is required.'); return; }
+      if (!email) { Toast.warning('Email Address is required.'); return; }
 
       const btn = document.getElementById('edit-save-btn');
-      btn.disabled = true;
-      btn.innerHTML = 'Saving...';
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner spinner--sm"></span> Saving…';
+      }
 
       const localServerPath = (Views._editingLocalPaths || []).join('\n');
 
+      const updatePayload = {
+        candidateId,
+        FullName: fullName,
+        fullName: fullName,
+        HR_Code: hrCode,
+        hrCode: hrCode,
+        Position: position,
+        position: position,
+        Department: department,
+        department: department,
+        Email: email,
+        email: email,
+        Recruitment_Type: recruitmentType,
+        recruitmentType: recruitmentType,
+        Classification: classification,
+        classification: classification,
+        Phone: phone,
+        phone: phone,
+        Batch_Number: batchNumber,
+        batchNumber: batchNumber,
+        Batch: batchNumber,
+        Notes: notes,
+        notes: notes,
+        LocalServerPath: localServerPath,
+        localServerPath: localServerPath,
+        LocalPaths: localServerPath
+      };
+
       try {
-        const res = await GAS.call('api_updateCandidateDetails', candidateId, { phone, notes, localServerPath, batchNumber });
+        const res = await GAS.call('api_updateCandidateDetails', candidateId, updatePayload);
         if (!res.success) throw new Error(res.error);
 
-        // Update local state
-        const cand = App.state.candidates.find(c => c.CandidateID === candidateId);
+        // Update local state in App.state.candidates
+        const cand = (App.state.candidates || []).find(c => c.CandidateID === candidateId);
         if (cand) {
+          cand.FullName = fullName;
+          cand.HR_Code = hrCode;
+          cand.Position = position;
+          cand.Department = department;
+          cand.Email = email;
+          cand.Recruitment_Type = recruitmentType;
+          cand.Classification = classification;
+          cand.classification = classification;
           cand.Phone = phone;
           cand.Notes = notes;
           cand.LocalServerPath = localServerPath;
           cand.Batch_Number = batchNumber;
           cand.batchNumber = batchNumber;
         }
+
         if (App.state.selectedCandidate?.CandidateID === candidateId) {
+          App.state.selectedCandidate.FullName = fullName;
+          App.state.selectedCandidate.HR_Code = hrCode;
+          App.state.selectedCandidate.Position = position;
+          App.state.selectedCandidate.Department = department;
+          App.state.selectedCandidate.Email = email;
+          App.state.selectedCandidate.Recruitment_Type = recruitmentType;
+          App.state.selectedCandidate.Classification = classification;
+          App.state.selectedCandidate.classification = classification;
           App.state.selectedCandidate.Phone = phone;
           App.state.selectedCandidate.Notes = notes;
           App.state.selectedCandidate.LocalServerPath = localServerPath;
@@ -3866,14 +3981,34 @@
           App.state.selectedCandidate.batchNumber = batchNumber;
         }
 
+        // Re-evaluate document completeness reactively using updated candidate details
+        if (cand) {
+          const candDocs = (App.state.documents || []).filter(d =>
+            normalizeText(d.CandidateID || d.candidateId) === normalizeText(candidateId)
+          );
+          if (candDocs.length > 0) {
+            App.state.docCompleteness[candidateId] = computeCompleteness(candDocs, cand);
+          }
+        }
+
         Views._editingLocalPaths = null;
         Modal.close();
-        Toast.success('Profile updated successfully!');
-        Router.navigate('candidate-detail'); // Re-render detail view to show new values
+        Toast.success('Candidate details updated successfully!');
+
+        // Re-render views reactively
+        if (App.state.currentView === 'candidate-detail') {
+          Router.navigate('candidate-detail', { selectedCandidate: cand || App.state.selectedCandidate });
+        } else if (App.state.currentView === 'candidates') {
+          Views._filterCandidates();
+        } else if (App.state.currentView === 'dashboard') {
+          Views._refreshDashboard();
+        }
       } catch (err) {
         Toast.error('Failed to update: ' + err.message);
-        btn.disabled = false;
-        btn.innerHTML = 'Save Changes';
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = 'Save Changes';
+        }
       }
     },
 

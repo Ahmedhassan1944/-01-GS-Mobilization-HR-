@@ -323,25 +323,24 @@ function api_createCandidate(candidateData) {
  * @param {string} candidateId
  * @param {object} updates - { phone, notes, localServerPath, hrCode, recruitmentType, batchNumber }
  */
-function api_updateCandidateDetails(candidateId, updates) {
+function api_updateCandidateDetails(candidateIdOrPayload, maybeUpdates = null) {
   const auth = requireRole_(['Admin', 'HR', 'Coordinator']);
   if (!auth.authorized) return { success: false, error: auth.error };
   try {
+    let candidateId = candidateIdOrPayload;
+    let payload = maybeUpdates;
+    if (typeof candidateIdOrPayload === 'object' && candidateIdOrPayload !== null) {
+      payload = candidateIdOrPayload;
+      candidateId = payload.candidateId || payload.CandidateID || payload.id;
+    }
+    if (!candidateId) return { success: false, error: 'CandidateID is required.' };
+    if (!payload || typeof payload !== 'object') return { success: false, error: 'Updates payload is required.' };
+
     const sheet = getSheet_(SHEET_CANDIDATES);
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
+    const headers = data[0] || [];
     const idCol = headers.indexOf('CandidateID');
-    if (idCol === -1) return { success: false, error: 'CandidateID column not found.' };
-
-    const phoneCol = headers.indexOf('Phone');
-    const notesCol = headers.indexOf('Notes');
-    const localPathCol = headers.indexOf('LocalServerPath');
-    const hrCodeCol = headers.indexOf('HR_Code');
-    const recruitmentTypeCol = headers.indexOf('Recruitment_Type');
-    const batchCol = headers.indexOf('Batch_Number') !== -1 ? headers.indexOf('Batch_Number') : headers.indexOf('BatchNumber');
-    const updatedCol = headers.indexOf('UpdatedAt');
-
-    const ALLOWED_RECRUITMENT_TYPES = new Set(['Internal', 'External']);
+    if (idCol === -1) return { success: false, error: 'CandidateID column not found in sheet.' };
 
     let rowIndex = -1;
     for (let i = 1; i < data.length; i++) {
@@ -355,62 +354,81 @@ function api_updateCandidateDetails(candidateId, updates) {
       return { success: false, error: 'Candidate not found.' };
     }
 
-    // Fetch the candidate's row as an array and apply all modifications in memory
+    // Fetch row into memory for atomic, high-performance O(1) single-roundtrip update
     const updatedRow = sheet.getRange(rowIndex, 1, 1, headers.length).getValues()[0];
 
-    if (updates.phone !== undefined && phoneCol !== -1) {
-      updatedRow[phoneCol] = updates.phone;
-    }
-    if (updates.notes !== undefined) {
-      if (notesCol === -1) {
-        // Notes column missing — skip silently and log; do not mutate schema at runtime
-        Logger.log('WARNING: Notes column not found in tbl_Candidates. Add it manually.');
-      } else {
-        updatedRow[notesCol] = updates.notes;
+    // Dynamic updatable fields dictionary: canonical field -> accepted payload keys
+    const updatableFields = {
+      'FullName': ['FullName', 'fullName', 'name'],
+      'HR_Code': ['HR_Code', 'hrCode', 'HRCode', 'hr_code'],
+      'Position': ['Position', 'position'],
+      'Department': ['Department', 'department'],
+      'Email': ['Email', 'email'],
+      'Recruitment_Type': ['Recruitment_Type', 'recruitmentType', 'recruitment_type'],
+      'Classification': ['Classification', 'classification'],
+      'Phone': ['Phone', 'phone'],
+      'Batch_Number': ['Batch_Number', 'batchNumber', 'BatchNumber', 'batch', 'Batch', 'batch_number'],
+      'Notes': ['Notes', 'notes'],
+      'LocalServerPath': ['LocalServerPath', 'localServerPath', 'LocalPaths', 'localPaths'],
+      'Nationality': ['Nationality', 'nationality']
+    };
+
+    // Flexible column locator: matches exact name, alternative case, or stripped underscore/hyphen
+    const findColIndex = (targetCol) => {
+      const directIdx = headers.indexOf(targetCol);
+      if (directIdx !== -1) return directIdx;
+      const normTarget = targetCol.toLowerCase().replace(/[-_\s]/g, '');
+      return headers.findIndex(h => String(h || '').toLowerCase().replace(/[-_\s]/g, '') === normTarget);
+    };
+
+    // Iterate through supported fields and map dynamically to actual sheet column headers
+    Object.keys(updatableFields).forEach(function(canonicalField) {
+      const aliasKeys = updatableFields[canonicalField];
+      let valueToSet = undefined;
+      for (let k = 0; k < aliasKeys.length; k++) {
+        const key = aliasKeys[k];
+        if (payload[key] !== undefined) {
+          valueToSet = payload[key];
+          break;
+        }
       }
-    }
-    if (updates.localServerPath !== undefined) {
-      if (localPathCol === -1) {
-        // LocalServerPath column missing — skip silently and log; do not mutate schema at runtime
-        Logger.log('WARNING: LocalServerPath column not found in tbl_Candidates. Add it manually.');
-      } else {
-        // Enforce the 500-char max defensively; empty string is always allowed.
-        const path = (updates.localServerPath || '').toString().slice(0, 500);
-        updatedRow[localPathCol] = path;
+
+      if (valueToSet !== undefined) {
+        let colIndex = findColIndex(canonicalField);
+        // If not found under canonical name, try finding by alias name in sheet headers
+        if (colIndex === -1) {
+          for (let a = 0; a < aliasKeys.length; a++) {
+            colIndex = findColIndex(aliasKeys[a]);
+            if (colIndex !== -1) break;
+          }
+        }
+
+        if (colIndex !== -1) {
+          if (canonicalField === 'LocalServerPath') {
+            updatedRow[colIndex] = String(valueToSet || '').slice(0, 500);
+          } else {
+            updatedRow[colIndex] = valueToSet !== null ? String(valueToSet).trim() : '';
+          }
+        } else {
+          Logger.log('Notice: Column ' + canonicalField + ' not found in ' + SHEET_CANDIDATES);
+        }
       }
-    }
-    if (updates.hrCode !== undefined) {
-      if (hrCodeCol === -1) {
-        Logger.log('WARNING: HR_Code column not found in tbl_Candidates. Add it manually.');
-      } else {
-        updatedRow[hrCodeCol] = (updates.hrCode || '').toString().trim();
-      }
-    }
-    if (updates.recruitmentType !== undefined) {
-      if (recruitmentTypeCol === -1) {
-        Logger.log('WARNING: Recruitment_Type column not found in tbl_Candidates. Add it manually.');
-      } else if (updates.recruitmentType === '' || ALLOWED_RECRUITMENT_TYPES.has(updates.recruitmentType)) {
-        updatedRow[recruitmentTypeCol] = updates.recruitmentType;
-      } else {
-        Logger.log('WARNING: Invalid Recruitment_Type value: ' + updates.recruitmentType + '. Allowed: Internal, External.');
-      }
-    }
-    if (updates.batchNumber !== undefined && batchCol !== -1) {
-      updatedRow[batchCol] = (updates.batchNumber || '').toString().trim();
-    }
+    });
+
+    const updatedCol = findColIndex('UpdatedAt');
     if (updatedCol !== -1) {
       updatedRow[updatedCol] = new Date().toISOString();
     }
 
-    // Commit via a single setValues() call
+    // Commit atomically via a single O(1) setValues call
     sheet.getRange(rowIndex, 1, 1, headers.length).setValues([updatedRow]);
 
-    api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Profile Updated');
-    // [CACHE POLICY] Write operation — invalidate dashboard cache immediately
+    api_writeLog_(candidateId, Session.getActiveUser().getEmail(), 'Candidate Profile Updated: ' + (payload.FullName || payload.fullName || candidateId));
+    // [CACHE POLICY] Write operation — invalidate dashboard and candidate caches immediately
     CacheService.getScriptCache().remove('dashboard_data');
     return { success: true };
   } catch (e) {
-    Logger.log(e);
+    Logger.log('api_updateCandidateDetails error: ' + e.message);
     return { success: false, error: e.message };
   }
 }
