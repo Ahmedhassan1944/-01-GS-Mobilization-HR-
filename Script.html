@@ -657,6 +657,11 @@
    * @returns {string[]}
    */
   const getRequiredDocsForCandidate = (candidate, options = {}) => {
+    // 1. Validate inputs
+    if (!candidate) return [];
+
+    // Default to a safe string if classification is missing
+    const candClass = normalizeText(candidate.Classification || candidate.classification || 'unclassified');
     const allDocRules = (App.state.settings && (App.state.settings.documentRules || App.state.settings.documentTypes)) || [
       { name: 'Passport', classifications: ['Engineers', 'Labors and Technicians'] },
       { name: 'Photo', classifications: ['Engineers', 'Labors and Technicians'] },
@@ -666,20 +671,29 @@
       { name: 'Visa', classifications: ['Engineers', 'Labors and Technicians'] },
       { name: 'CV', classifications: ['Engineers', 'Labors and Technicians'] }
     ];
-    const candClass = normalizeText(candidate?.Classification || candidate?.classification || '');
 
     const filtered = allDocRules.filter(rule => {
+      // Handle legacy flat arrays if Settings state hasn't fully migrated yet
+      if (typeof rule === 'string') return true;
       if (!rule) return false;
-      const classifications = (typeof rule === 'object' && rule !== null) ? rule.classifications : null;
-      // If document has no explicit classifications assigned, assume it's global
-      if (!classifications || !Array.isArray(classifications) || classifications.length === 0) return true;
-      return classifications.some(cls => normalizeText(cls) === candClass);
+
+      // If the document has NO classifications array, it is a global document (required for everyone)
+      if (!rule.classifications || !Array.isArray(rule.classifications) || rule.classifications.length === 0) {
+        return true;
+      }
+
+      // Strict inclusion check using normalized strings
+      return rule.classifications.some(cls => normalizeText(cls) === candClass);
     });
 
-    if (options && options.canonical) {
-      return filtered.map(rule => (typeof rule === 'object' && rule !== null ? (rule.name || rule) : rule));
-    }
-    return filtered.map(rule => normalizeText(typeof rule === 'object' && rule !== null ? (rule.name || rule) : rule));
+    const requiredDocs = (options && options.canonical)
+      ? filtered.map(rule => (typeof rule === 'object' && rule !== null ? (rule.name || rule.val || '') : rule))
+      : filtered.map(rule => normalizeText(typeof rule === 'object' && rule !== null ? (rule.name || rule.val || '') : rule));
+
+    // Developer Assurance Log
+    console.log(`[Engine Validation] Candidate ID: ${candidate.CandidateID || candidate.candidateId || 'N/A'} | Class: [${candidate.Classification || candidate.classification || 'NONE'}] | Required Docs Count: ${requiredDocs.length}`);
+
+    return requiredDocs;
   };
   window.getRequiredDocsForCandidate = getRequiredDocsForCandidate;
   App.getRequiredDocsForCandidate = getRequiredDocsForCandidate;
@@ -3544,7 +3558,12 @@
           completenessEl.innerHTML = `
           <div class="doc-completeness__inner">
             <div class="doc-completeness__header">
-              <span class="doc-completeness__title">📋 Document Completeness</span>
+              <span class="doc-completeness__title" id="profile-completeness-title">
+                📋 Document Completeness
+                <span class="badge bg-secondary ms-2" style="font-size: 0.75rem; vertical-align: middle; margin-left: 8px;">
+                  Rule Profile: ${escHtml((candidate.Classification || candidate.classification || 'Unclassified').toUpperCase())}
+                </span>
+              </span>
               <span class="doc-completeness__pct" style="color:${barColor}">${progressPercent}%</span>
             </div>
             <div class="doc-completeness__bar-track" role="progressbar"
