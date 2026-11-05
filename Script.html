@@ -3628,9 +3628,40 @@
     },
 
 
+    _renderModalCandidateBanner(candidate, prefix = 'upload') {
+      const c = candidate || {};
+      const name = c.FullName || c.fullName || 'Candidate Name';
+      const position = c.Position || c.position || 'Position';
+      const rawStatus = c.CurrentStatus || c.Status || c.status || 'New Candidate';
+
+      return `
+      <div class="alert alert-secondary py-2 px-3 mb-3 d-flex flex-column modal-context-banner" id="${prefix}-modal-context" style="border-left: 4px solid #0d6efd;">
+        <div class="d-flex align-items-center justify-content-between" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="fw-bold text-dark fs-6" id="${prefix}-context-name">${escHtml(name)}</span>
+          <span class="badge bg-primary ms-auto" id="${prefix}-context-status">${escHtml(rawStatus)}</span>
+        </div>
+        <div class="d-flex align-items-center mt-1" style="font-size:0.85rem;display:flex;align-items:center;margin-top:4px;flex-wrap:wrap;gap:8px">
+          <span style="display:inline-flex;align-items:center">
+            <i class="fas fa-briefcase text-muted me-1"></i>
+            <span class="text-muted me-2" id="${prefix}-context-position">${escHtml(position)}</span>
+          </span>
+          ${c.Department ? `
+          <span style="display:inline-flex;align-items:center">
+            <i class="fas fa-building text-muted me-1"></i>
+            <span class="text-muted me-2">${escHtml(c.Department)}</span>
+          </span>` : ''}
+          ${c.Classification ? `
+          <span style="display:inline-flex;align-items:center">
+            <i class="fas fa-tag text-muted me-1"></i>
+            <span class="text-muted">${escHtml(c.Classification)}</span>
+          </span>` : ''}
+        </div>
+      </div>`;
+    },
+
     _openStatusModal(candidateId, candidateName) {
-      const candidate = (App.state.candidates || []).find(c => c.CandidateID === candidateId) || (App.state.selectedCandidate?.CandidateID === candidateId ? App.state.selectedCandidate : {});
-      const currentStatus = candidate.CurrentStatus || '';
+      const candidate = (App.state.candidates || []).find(c => c.CandidateID === candidateId) || (App.state.selectedCandidate?.CandidateID === candidateId ? App.state.selectedCandidate : {}) || {};
+      const currentStatus = candidate.CurrentStatus || candidate.Status || '';
       const statuses = App.state.settings?.statuses || [
         'New Candidate', 'Pending Passport', 'Pending Photo', 'Pending Academic Certificate',
         'Pending Medical', 'Booked a medical examination', 'Documents Under Preparing',
@@ -3650,7 +3681,8 @@
         <button class="modal__close" onclick="Modal.close()" aria-label="Close">✕</button>
       </div>
       <div class="modal__body">
-        <p style="margin-bottom:var(--sp-3);color:var(--text-secondary)">Update mobilization status for <strong>${escHtml(candidateName)}</strong></p>
+        ${Views._renderModalCandidateBanner(candidate, 'status')}
+        <p style="margin-bottom:var(--sp-3);color:var(--text-secondary)">Select the new mobilization stage for this candidate:</p>
         <div class="form-group">
           <label class="form-label" for="new-status">New Status <span class="required">*</span></label>
           <select class="form-select" id="new-status">
@@ -3662,6 +3694,17 @@
         <button class="btn btn--outline" onclick="Modal.close()">Cancel</button>
         <button class="btn btn--primary" onclick="Views._submitStatus('${candidateId}')">Save Status</button>
       </div>`);
+
+      // Populate context banner dynamically
+      const statusNameEl = document.getElementById('status-context-name');
+      const statusPosEl = document.getElementById('status-context-position');
+      const statusStEl = document.getElementById('status-context-status');
+
+      if (statusNameEl && statusPosEl && statusStEl && candidate.FullName) {
+        statusNameEl.textContent = candidate.FullName;
+        statusPosEl.textContent = candidate.Position || 'No Position';
+        statusStEl.textContent = candidate.CurrentStatus || candidate.Status || 'UNKNOWN';
+      }
     },
 
     async _submitStatus(candidateId) {
@@ -3726,7 +3769,7 @@
         <button class="modal__close" onclick="Modal.close()" aria-label="Close">✕</button>
       </div>
       <div class="modal__body">
-        <p style="margin-bottom:var(--sp-3);color:var(--text-secondary)">Editing core details for <strong>${escHtml(c.FullName || candidateId)}</strong></p>
+        ${Views._renderModalCandidateBanner(c, 'edit')}
         <div class="form-grid">
           <!-- Full Name -->
           <div class="form-group col-span-2">
@@ -3816,6 +3859,17 @@
       </div>`);
       Views._editingLocalPaths = (c.LocalServerPath || '').split('\n').map(p => p.trim()).filter(Boolean);
       Views._renderEditPathRows();
+
+      // Populate context banner dynamically
+      const editNameEl = document.getElementById('edit-context-name');
+      const editPosEl = document.getElementById('edit-context-position');
+      const editStatusEl = document.getElementById('edit-context-status');
+
+      if (editNameEl && editPosEl && editStatusEl && c.FullName) {
+        editNameEl.textContent = c.FullName;
+        editPosEl.textContent = c.Position || 'No Position';
+        editStatusEl.textContent = c.CurrentStatus || c.Status || 'UNKNOWN';
+      }
     },
 
     _viewCandidateProfile(candidateId) {
@@ -4013,12 +4067,16 @@
     },
 
     _openUploadModal(candidateId, folderId, preselectedDocType = '') {
+      const candidate = typeof candidateId === 'object'
+        ? candidateId
+        : ((App.state.candidates || []).find(c => c.CandidateID === candidateId) || (App.state.selectedCandidate?.CandidateID === candidateId ? App.state.selectedCandidate : {}) || {});
       Modal.open(`
       <div class="modal__header">
         <h2 class="modal__title">📤 Upload Document</h2>
         <button class="modal__close" onclick="Modal.close()" aria-label="Close">✕</button>
       </div>
       <div class="modal__body">
+        ${Views._renderModalCandidateBanner(candidate, 'upload')}
         <div class="form-grid" style="gap:var(--sp-3)">
           <div class="form-group">
             <label class="form-label" for="doc-type">Document Type <span class="required">*</span></label>
@@ -4055,6 +4113,17 @@
       </div>`);
 
       // Dynamically populate document types dropdown from Settings SSOT using DocumentFragment
+      // Populate context banner dynamically (Prompt-62 FIX 2)
+      const nameEl = document.getElementById('upload-context-name');
+      const posEl = document.getElementById('upload-context-position');
+      const statusEl = document.getElementById('upload-context-status');
+
+      if (nameEl && posEl && statusEl && candidate.FullName) {
+        nameEl.textContent = candidate.FullName;
+        posEl.textContent = candidate.Position || 'No Position';
+        statusEl.textContent = candidate.CurrentStatus || candidate.Status || 'UNKNOWN';
+      }
+
       const selectEl = document.getElementById('doc-type');
       if (selectEl) {
         const rawTypes = getRequiredDocs();

@@ -2900,4 +2900,50 @@ body.dark-mode .settings-checkbox-label {
 
   /* Aliases for backwards compatibility */
   .premium-multiselect { position: relative; width: 100%; }
+  /* ── Contextual Candidate Banner in Modals (Prompt-62) ────────────────── */
+  .modal-context-banner {
+    background: var(--bg-hover, #f8fafc);
+    border: 1px solid var(--border, #e2e8f0);
+    border-left: 4px solid var(--primary, #0d6efd) !important;
+    border-radius: var(--radius-sm, 6px);
+    padding: 8px 12px;
+    margin-bottom: var(--sp-3, 14px);
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-context-banner #upload-context-name,
+  .modal-context-banner #status-context-name,
+  .modal-context-banner #edit-context-name {
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: var(--text-primary, #0f172a);
+  }
+  .modal-context-banner .badge.bg-primary {
+    background-color: var(--primary, #0d6efd) !important;
+    color: #ffffff !important;
+    border-radius: 9999px;
+    padding: 3px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  body.dark-mode .modal-context-banner {
+    background: #1e293b;
+    border-color: #334155;
+    border-left-color: #38bdf8 !important;
+  }
+  body.dark-mode .modal-context-banner #upload-context-name,
+  body.dark-mode .modal-context-banner #status-context-name,
+  body.dark-mode .modal-context-banner #edit-context-name,
+  body.dark-mode .modal-context-banner .text-dark {
+    color: #f8fafc !important;
+  }
+  body.dark-mode .modal-context-banner .text-muted {
+    color: #94a3b8 !important;
+  }
+  body.dark-mode .modal-context-banner .badge.bg-primary {
+    background-color: #0284c7 !important;
+    color: #ffffff !important;
+  }
+
 </style>
