@@ -191,11 +191,25 @@ function api_getAllCandidates() {
         const candClass = String(cand.Classification || cand.classification || '').trim().toLowerCase();
 
         // Filter required docs specifically for this candidate's classification
+        const isEngineerOnly_ = (docName) => {
+          const name = String(docName || '').trim().toLowerCase();
+          return name.includes('academic') ||
+                 name.includes('transcript') ||
+                 name.includes('certificate') ||
+                 name.includes('degree');
+        };
+
         const candRequiredDocs = docRules.filter(rule => {
           if (!rule) return false;
+          const docName = typeof rule === 'string' ? rule : (rule.name || rule.val || '');
           const classifications = (typeof rule === 'object' && rule !== null) ? rule.classifications : null;
-          if (!classifications || !Array.isArray(classifications) || classifications.length === 0) return true;
-          return classifications.some(cls => String(cls || '').trim().toLowerCase() === candClass);
+          if (classifications && Array.isArray(classifications) && classifications.length > 0) {
+            return classifications.some(cls => String(cls || '').trim().toLowerCase() === candClass);
+          }
+          if (candClass.includes('labor') || candClass.includes('technician')) {
+            if (isEngineerOnly_(docName)) return false;
+          }
+          return true;
         }).map(rule => (typeof rule === 'object' && rule !== null ? (rule.name || rule.val || '') : String(rule)));
 
         const presentDocs = [];

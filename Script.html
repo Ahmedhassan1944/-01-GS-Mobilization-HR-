@@ -660,12 +660,10 @@
    * @returns {string[]}
    */
   const getRequiredDocsForCandidate = (candidate, options = {}) => {
-    // 1. Validate inputs
     if (!candidate) return [];
 
-    // Default to a safe string if classification is missing
     const candClass = normalizeText(candidate.Classification || candidate.classification || 'unclassified');
-    const allDocRules = (App.state.settings && (App.state.settings.documentRules || App.state.settings.documentTypes)) || [
+    const rawDocs = (App.state.settings && (App.state.settings.documentRules || App.state.settings.documentTypes)) || [
       { name: 'Passport', classifications: ['Engineers', 'Labors and Technicians'] },
       { name: 'Photo', classifications: ['Engineers', 'Labors and Technicians'] },
       { name: 'Academic Certificate', classifications: ['Engineers'] },
@@ -675,28 +673,42 @@
       { name: 'CV', classifications: ['Engineers', 'Labors and Technicians'] }
     ];
 
-    const filtered = allDocRules.filter(rule => {
-      // Handle legacy flat arrays if Settings state hasn't fully migrated yet
-      if (typeof rule === 'string') return true;
-      if (!rule) return false;
+    // Fallback Business Rule: Identify documents that are STRICTLY for Engineers
+    const isEngineerOnly = (docName) => {
+      const name = normalizeText(docName);
+      return name.includes('academic') ||
+             name.includes('transcript') ||
+             name.includes('certificate') ||
+             name.includes('degree');
+    };
 
-      // If the document has NO classifications array, it is a global document (required for everyone)
-      if (!rule.classifications || !Array.isArray(rule.classifications) || rule.classifications.length === 0) {
-        return true;
+    const requiredDocs = rawDocs.filter(rule => {
+      if (!rule) return false;
+      const docName = typeof rule === 'string' ? rule : (rule.name || rule.val || '');
+
+      // 1. If it's a properly formatted object from the NEW Settings UI schema:
+      if (typeof rule === 'object' && rule.classifications && Array.isArray(rule.classifications) && rule.classifications.length > 0) {
+        return rule.classifications.some(cls => normalizeText(cls) === candClass);
       }
 
-      // Strict inclusion check using normalized strings
-      return rule.classifications.some(cls => normalizeText(cls) === candClass);
-    });
+      // 2. FALLBACK: If Settings are still saving as plain strings, enforce hard business rules:
+      if (candClass.includes('labor') || candClass.includes('technician')) {
+        // Labors/Technicians do NOT require academic certificates or transcripts
+        if (isEngineerOnly(docName)) {
+          return false;
+        }
+      }
 
-    const requiredDocs = (options && options.canonical)
-      ? filtered.map(rule => (typeof rule === 'object' && rule !== null ? (rule.name || rule.val || '') : rule))
-      : filtered.map(rule => normalizeText(typeof rule === 'object' && rule !== null ? (rule.name || rule.val || '') : rule));
+      // 3. Default: Require the document (e.g., Passport, Visa, Medical are global)
+      return true;
+    }).map(rule => typeof rule === 'string' ? rule : (rule.name || rule.val || ''));
 
-    // Developer Assurance Log
-    console.log(`[Engine Validation] Candidate ID: ${candidate.CandidateID || candidate.candidateId || 'N/A'} | Class: [${candidate.Classification || candidate.classification || 'NONE'}] | Required Docs Count: ${requiredDocs.length}`);
+    // Console logging for debugging the strict filter
+    console.log(`[Strict Engine] ${candidate.FullName || candidate.fullName || candidate.CandidateID || 'Candidate'} (${candClass}) requires ${requiredDocs.length} docs.`, requiredDocs);
 
-    return requiredDocs;
+    return (options && options.canonical === false)
+      ? requiredDocs.map(d => normalizeText(d))
+      : requiredDocs;
   };
   window.getRequiredDocsForCandidate = getRequiredDocsForCandidate;
   App.getRequiredDocsForCandidate = getRequiredDocsForCandidate;
@@ -1357,7 +1369,7 @@
         const safeUploadedDocs = candDocs.map(d => normalizeText(d.DocType || d.docType));
 
         // Classification-based required documents for THIS specific candidate
-        const candRequiredNorm = getRequiredDocsForCandidate(c);
+        const candRequiredNorm = getRequiredDocsForCandidate(c).map(d => normalizeText(d));
 
         requiredDocs.forEach(reqDoc => {
           const safeReq = normalizeText(reqDoc);
