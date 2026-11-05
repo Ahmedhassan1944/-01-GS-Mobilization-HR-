@@ -395,13 +395,16 @@
       }
       if (fnName === 'api_massiveDriveExport') return { success: true, folderId: 'mock-folder-' + Date.now(), folderUrl: 'https://drive.google.com' };
       if (fnName === 'api_getAllDocuments') return { success: true, data: documents };
-      if (fnName === 'api_getAllCandidates') return { success: true, data: candidates };
+      if (fnName === 'api_getAllCandidates' || fnName === 'api_getCandidates') return { success: true, data: candidates };
       if (fnName === 'api_createCandidate') return { success: true, candidateId: 'new-' + Date.now() };
       if (fnName === 'api_updateCandidateStatus') return { success: true };
       if (fnName === 'api_updateCandidateDetails') {
-        const [candId, updates] = args;
-        const cand = candidates.find(c => c.CandidateID === candId);
-        if (cand && updates) Object.assign(cand, updates);
+        const firstArg = args[0];
+        const secondArg = args[1];
+        const targetId = (typeof firstArg === 'object' && firstArg !== null) ? (firstArg.CandidateID || firstArg.candidateId) : firstArg;
+        const payload = (typeof firstArg === 'object' && firstArg !== null) ? firstArg : secondArg;
+        const cand = candidates.find(c => normalizeText(c.CandidateID) === normalizeText(targetId));
+        if (cand && payload) Object.assign(cand, payload);
         return { success: true };
       }
       if (fnName === 'api_getDocumentsByCandidate') return { success: true, data: documents.filter(d => d.CandidateID === args[0]) };
@@ -2965,6 +2968,7 @@
     },
 
     _renderCandidatesTable(data) {
+      if (!data) data = (App.state.filteredCandidates || App.state.candidates || []);
       const count = document.getElementById('cands-count');
       if (count) count.textContent = `${data.length} Candidate${data.length !== 1 ? 's' : ''} found`;
       const footer = document.getElementById('table-footer');
@@ -3355,6 +3359,20 @@
       );
     },
 
+    _renderCandidateProfile(candidateId) {
+      const container = document.getElementById('app-view');
+      if (container) {
+        if (candidateId) {
+          const cand = (App.state.candidates || []).find(c =>
+            normalizeText(c.CandidateID || c.candidateId) === normalizeText(candidateId)
+          );
+          if (cand) App.state.selectedCandidate = cand;
+        }
+        container.innerHTML = '';
+        Views.candidateDetail(container);
+      }
+    },
+
     candidateDetail(container) {
       const c = App.state.selectedCandidate;
       if (!c) { Router.navigate('candidates'); return; }
@@ -3517,9 +3535,12 @@
 
         // ── Document Completeness Panel ──────────────────────────────────
         // 1. Sync JavaScript memory cache instantly using candidate classification
-        const candidate = (App.state.candidates || []).find(cand => normalizeText(cand.CandidateID) === cleanId) || App.state.selectedCandidate || {};
+        const candidate = (App.state.candidates || []).find(cand => normalizeText(cand.CandidateID || cand.candidateId) === normalizeText(cleanId)) || App.state.selectedCandidate || {};
         const newComp = computeCompleteness(docs, candidate);
         App.state.docCompleteness[cleanId] = newComp;
+        if (candidate.CandidateID && candidate.CandidateID !== cleanId) {
+          App.state.docCompleteness[candidate.CandidateID] = newComp;
+        }
 
         // 2. Reactive view sync for table rows if currently in a table view
         if (App.state.currentView === 'candidates') {
@@ -4018,63 +4039,95 @@
 
       try {
         const res = await GAS.call('api_updateCandidateDetails', candidateId, updatePayload);
-        if (!res.success) throw new Error(res.error);
+        if (!res || !res.success) throw new Error(res?.error || 'Update failed');
 
-        // Update local state in App.state.candidates
-        const cand = (App.state.candidates || []).find(c => c.CandidateID === candidateId);
-        if (cand) {
-          cand.FullName = fullName;
-          cand.HR_Code = hrCode;
-          cand.Position = position;
-          cand.Department = department;
-          cand.Email = email;
-          cand.Recruitment_Type = recruitmentType;
-          cand.Classification = classification;
-          cand.classification = classification;
-          cand.Phone = phone;
-          cand.Notes = notes;
-          cand.LocalServerPath = localServerPath;
-          cand.Batch_Number = batchNumber;
-          cand.batchNumber = batchNumber;
+        // 1. Force strict state mutation (Object.assign ensures completely new object reference)
+        const candidateIndex = (App.state.candidates || []).findIndex(c =>
+          normalizeText(c.CandidateID || c.candidateId) === normalizeText(candidateId)
+        );
+        let updatedCand = null;
+        if (candidateIndex !== -1) {
+          App.state.candidates[candidateIndex] = Object.assign({}, App.state.candidates[candidateIndex], {
+            CandidateID: candidateId,
+            FullName: fullName,
+            fullName: fullName,
+            HR_Code: hrCode,
+            hrCode: hrCode,
+            Position: position,
+            position: position,
+            Department: department,
+            department: department,
+            Email: email,
+            email: email,
+            Recruitment_Type: recruitmentType,
+            recruitmentType: recruitmentType,
+            Classification: classification,
+            classification: classification,
+            Phone: phone,
+            phone: phone,
+            Batch_Number: batchNumber,
+            batchNumber: batchNumber,
+            Batch: batchNumber,
+            Notes: notes,
+            notes: notes,
+            LocalServerPath: localServerPath,
+            localServerPath: localServerPath,
+            LocalPaths: localServerPath
+          });
+          updatedCand = App.state.candidates[candidateIndex];
+        } else {
+          updatedCand = Object.assign({}, updatePayload, { CandidateID: candidateId });
         }
 
-        if (App.state.selectedCandidate?.CandidateID === candidateId) {
-          App.state.selectedCandidate.FullName = fullName;
-          App.state.selectedCandidate.HR_Code = hrCode;
-          App.state.selectedCandidate.Position = position;
-          App.state.selectedCandidate.Department = department;
-          App.state.selectedCandidate.Email = email;
-          App.state.selectedCandidate.Recruitment_Type = recruitmentType;
-          App.state.selectedCandidate.Classification = classification;
-          App.state.selectedCandidate.classification = classification;
-          App.state.selectedCandidate.Phone = phone;
-          App.state.selectedCandidate.Notes = notes;
-          App.state.selectedCandidate.LocalServerPath = localServerPath;
-          App.state.selectedCandidate.Batch_Number = batchNumber;
-          App.state.selectedCandidate.batchNumber = batchNumber;
-        }
+        // Always update App.state.selectedCandidate reference
+        App.state.selectedCandidate = Object.assign({}, updatedCand);
 
         // Re-evaluate document completeness reactively using updated candidate details
-        if (cand) {
-          const candDocs = (App.state.documents || []).filter(d =>
-            normalizeText(d.CandidateID || d.candidateId) === normalizeText(candidateId)
-          );
-          if (candDocs.length > 0) {
-            App.state.docCompleteness[candidateId] = computeCompleteness(candDocs, cand);
-          }
+        const candDocs = (App.state.documents || []).filter(d =>
+          normalizeText(d.CandidateID || d.candidateId) === normalizeText(candidateId)
+        );
+        if (candDocs.length > 0) {
+          App.state.docCompleteness[candidateId] = computeCompleteness(candDocs, updatedCand);
         }
 
+        // 2. Hide Modal & Show Toast immediately for good UX
         Views._editingLocalPaths = null;
         Modal.close();
         Toast.success('Candidate details updated successfully!');
 
-        // Re-render views reactively
-        if (App.state.currentView === 'candidate-detail') {
-          Router.navigate('candidate-detail', { selectedCandidate: cand || App.state.selectedCandidate });
+        // 3. WIPE AND REBUILD DOM (Soft Reload)
+        // Check if Profile View is active
+        const appView = document.getElementById('app-view');
+        if (App.state.currentView === 'candidate-detail' && appView) {
+          // EXTREMELY IMPORTANT: Kill old DOM to prevent stale visual caching
+          appView.innerHTML = '';
+          Views._renderCandidateProfile(candidateId);
         } else if (App.state.currentView === 'candidates') {
-          Views._filterCandidates();
+          // Check if Candidates Table is active
+          const tbody = document.querySelector('#candidates-table tbody');
+          if (tbody) tbody.innerHTML = ''; // Wipe table rows
+          Views._renderCandidatesTable(); // Rebuild table
         } else if (App.state.currentView === 'dashboard') {
           Views._refreshDashboard();
+        }
+
+        // 4. Background Data Sync (Bulletproof SSOT)
+        // Silently pull fresh data from the server so the next time the user clicks around,
+        // the state is 100% matched with the database without a loading screen.
+        if (typeof GAS !== 'undefined') {
+          GAS.call('api_getAllCandidates').then(freshRes => {
+            if (freshRes && freshRes.success && Array.isArray(freshRes.data)) {
+              App.state.candidates = freshRes.data;
+              if (App.state.currentView === 'candidate-detail') {
+                const refreshed = freshRes.data.find(c =>
+                  normalizeText(c.CandidateID || c.candidateId) === normalizeText(candidateId)
+                );
+                if (refreshed) {
+                  App.state.selectedCandidate = refreshed;
+                }
+              }
+            }
+          }).catch(() => {});
         }
       } catch (err) {
         Toast.error('Failed to update: ' + err.message);

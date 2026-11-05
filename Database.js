@@ -233,6 +233,14 @@ function api_getAllCandidates() {
 }
 
 /**
+ * SSOT Alias for api_getAllCandidates
+ * Enables seamless compatibility with GAS.call('api_getCandidates')
+ */
+function api_getCandidates() {
+  return api_getAllCandidates();
+}
+
+/**
  * Creates a new candidate record in the Candidates sheet.
  * Schema-safe dynamic column mapping: dynamically maps fields to matching header positions.
  * @param {object} candidateData - { fullName, position, department, email, phone, nationality, salary, coordinatorEmail, hrCode, recruitmentType, localServerPath, batchNumber }
