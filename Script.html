@@ -118,18 +118,22 @@
           'Unfit-Injury',
           'Unfit-PCR'
         ],
+        classifications: [
+          'Engineers',
+          'Labors and Technicians'
+        ],
         recruitmentTypes: [
           'Internal',
           'External'
         ],
         documentTypes: [
-          'Passport',
-          'Photo',
-          'Academic Certificate',
-          'Medical Examination',
-          'Medical Analysis',
-          'Visa',
-          'CV'
+          { name: 'Passport', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Photo', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Academic Certificate', classifications: ['Engineers'] },
+          { name: 'Medical Examination', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Medical Analysis', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Visa', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'CV', classifications: ['Engineers', 'Labors and Technicians'] }
         ],
         departments: [
           'Projects',
@@ -292,12 +296,12 @@
     // ── Mock data for local / offline preview ──
     _mockData(fnName, ...args) {
       const candidates = [
-        { CandidateID: 'c-001', FullName: 'Ahmed Ali', Position: 'Civil Engineer', Department: 'Projects', Email: 'ahmed@test.com', Nationality: 'Egyptian', CurrentStatus: 'Pending Passport', CreatedAt: '2026-06-01T08:00:00Z', DriveFolderID: 'folder-001' },
+        { CandidateID: 'c-001', FullName: 'Ahmed Ali', Position: 'Civil Engineer', Department: 'Projects', Email: 'ahmed@test.com', Nationality: 'Egyptian', CurrentStatus: 'Pending Passport', Classification: 'Engineers', CreatedAt: '2026-06-01T08:00:00Z', DriveFolderID: 'folder-001' },
         { CandidateID: 'c-002', FullName: 'Sara Mohamed', Position: 'HR Specialist', Department: 'HR', Email: 'sara@test.com', Nationality: 'Egyptian', CurrentStatus: 'Pending Photo', CreatedAt: '2026-06-03T09:00:00Z', DriveFolderID: 'folder-002' },
         { CandidateID: 'c-003', FullName: 'Omar Khaled', Position: 'Mech. Engineer', Department: 'Maintenance', Email: 'omar@test.com', Nationality: 'Sudanese', CurrentStatus: 'Documents Complete', CreatedAt: '2026-06-05T10:00:00Z', DriveFolderID: 'folder-003' },
         { CandidateID: 'c-004', FullName: 'Nadia Youssef', Position: 'Accountant', Department: 'Finance', Email: 'nadia@test.com', Nationality: 'Egyptian', CurrentStatus: 'Mobilized', CreatedAt: '2026-05-20T07:00:00Z', DriveFolderID: 'folder-004' },
         { CandidateID: 'c-005', FullName: 'Khaled Hassan', Position: 'Site Supervisor', Department: 'Projects', Email: 'khaled@test.com', Nationality: 'Jordanian', CurrentStatus: 'Visa Pending', CreatedAt: '2026-06-10T11:00:00Z', DriveFolderID: 'folder-005' },
-        { CandidateID: 'c-006', FullName: 'Layla Ibrahim', Position: 'Safety Officer', Department: 'Safety', Email: 'layla@test.com', Nationality: 'Egyptian', CurrentStatus: 'Visa Completed', CreatedAt: '2026-06-12T09:00:00Z', DriveFolderID: 'folder-006' },
+        { CandidateID: 'c-006', FullName: 'Layla Ibrahim', Position: 'Safety Officer', Classification: 'Labors and Technicians', Department: 'Safety', Email: 'layla@test.com', Nationality: 'Egyptian', CurrentStatus: 'Visa Completed', CreatedAt: '2026-06-12T09:00:00Z', DriveFolderID: 'folder-006' },
         { CandidateID: 'c-007', FullName: 'Hassan Nour', Position: 'QC Inspector', Department: 'Operations', Email: 'hassan@test.com', Nationality: 'Sudanese', CurrentStatus: 'Pending Academic Certificate', CreatedAt: '2026-06-14T08:00:00Z', DriveFolderID: 'folder-007' },
         { CandidateID: 'c-008', FullName: 'Rania Saleh', Position: 'Procurement Eng.', Department: 'Operations', Email: 'rania@test.com', Nationality: 'Egyptian', CurrentStatus: 'New Candidate', CreatedAt: '2026-06-20T10:00:00Z', DriveFolderID: '' },
       ];
@@ -373,7 +377,16 @@
         }
       };
       if (fnName === 'api_getSystemSettings' || fnName === 'api_getSettings') return { success: true, data: App.state.settings };
-      if (fnName === 'api_updateSystemSettings') {
+      if (fnName === 'api_updateSystemSettings' || fnName === 'api_saveSettings') {
+        const [catOrObj, maybeItems] = args;
+        if (typeof catOrObj === 'object' && catOrObj !== null) {
+          Object.assign(App.state.settings, catOrObj);
+        } else if (catOrObj && maybeItems) {
+          App.state.settings[catOrObj] = maybeItems;
+        }
+        return { success: true, settings: App.state.settings };
+      }
+      if (false) {
         const [cat, items] = args;
         if (cat && items) {
           App.state.settings[cat] = items;
@@ -610,14 +623,61 @@
   // ─────────────────────────────────────────────
 
   /**
-   * SSOT: Dynamic required document types resolved from App.state.settings
+   * SSOT: Dynamic canonical required document types resolved from App.state.settings.
+   * Returns an array of canonical string names for backward compatibility.
    */
   const getRequiredDocs = () => {
     const list = (App.state.settings && Array.isArray(App.state.settings.documentTypes) && App.state.settings.documentTypes.length > 0)
       ? App.state.settings.documentTypes
-      : ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
-    return [...list];
+      : [
+          { name: 'Passport', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Photo', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Academic Certificate', classifications: ['Engineers'] },
+          { name: 'Medical Examination', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Medical Analysis', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'Visa', classifications: ['Engineers', 'Labors and Technicians'] },
+          { name: 'CV', classifications: ['Engineers', 'Labors and Technicians'] }
+        ];
+    return list.map(item => (typeof item === 'object' && item !== null ? (item.name || item.val || '') : item));
   };
+
+  /**
+   * FIX 3: Dynamic Requirement Helper
+   * Resolves required documents per candidate based on candidate Classification.
+   * Returns normalized document strings by default (or canonical names if options.canonical is true).
+   *
+   * @param {Object} candidate - Candidate object containing Classification property
+   * @param {Object} [options] - Configuration options
+   * @param {boolean} [options.canonical=false] - Return canonical casing instead of normalized
+   * @returns {string[]}
+   */
+  const getRequiredDocsForCandidate = (candidate, options = {}) => {
+    const allDocRules = (App.state.settings && (App.state.settings.documentRules || App.state.settings.documentTypes)) || [
+      { name: 'Passport', classifications: ['Engineers', 'Labors and Technicians'] },
+      { name: 'Photo', classifications: ['Engineers', 'Labors and Technicians'] },
+      { name: 'Academic Certificate', classifications: ['Engineers'] },
+      { name: 'Medical Examination', classifications: ['Engineers', 'Labors and Technicians'] },
+      { name: 'Medical Analysis', classifications: ['Engineers', 'Labors and Technicians'] },
+      { name: 'Visa', classifications: ['Engineers', 'Labors and Technicians'] },
+      { name: 'CV', classifications: ['Engineers', 'Labors and Technicians'] }
+    ];
+    const candClass = normalizeText(candidate?.Classification || candidate?.classification || '');
+
+    const filtered = allDocRules.filter(rule => {
+      if (!rule) return false;
+      const classifications = (typeof rule === 'object' && rule !== null) ? rule.classifications : null;
+      // If document has no explicit classifications assigned, assume it's global
+      if (!classifications || !Array.isArray(classifications) || classifications.length === 0) return true;
+      return classifications.some(cls => normalizeText(cls) === candClass);
+    });
+
+    if (options && options.canonical) {
+      return filtered.map(rule => (typeof rule === 'object' && rule !== null ? (rule.name || rule) : rule));
+    }
+    return filtered.map(rule => normalizeText(typeof rule === 'object' && rule !== null ? (rule.name || rule) : rule));
+  };
+  window.getRequiredDocsForCandidate = getRequiredDocsForCandidate;
+  App.getRequiredDocsForCandidate = getRequiredDocsForCandidate;
 
   const REQUIRED_DOCS = ['Passport', 'Photo', 'Academic Certificate', 'Medical Examination', 'Medical Analysis', 'Visa', 'CV'];
 
@@ -643,7 +703,7 @@
    * @param {Object[]} docs - raw document records for one candidate
    * @returns {{ status:'ok', pct:number, missingDocs:string[], presentDocs:string[] }}
    */
-  const computeCompleteness = (docs) => {
+  const computeCompleteness = (docs, candidate = null) => {
     const validDocs = (docs || []).filter(d => {
       const status = normalizeText(d.ApprovalStatus ?? d.Status ?? '');
       return status !== 'rejected';
@@ -656,7 +716,8 @@
       return normalizeText(aliased);
     });
 
-    const requiredDocs = getRequiredDocs();
+    // Target requirements specifically to candidate Classification
+    const requiredDocs = candidate ? getRequiredDocsForCandidate(candidate, { canonical: true }) : getRequiredDocs();
     const presentDocs = requiredDocs.filter(reqDoc => uploadedNormalizedTypes.includes(normalizeText(reqDoc)));
     const missingDocs = requiredDocs.filter(reqDoc => !uploadedNormalizedTypes.includes(normalizeText(reqDoc)));
     const pct = requiredDocs.length > 0 ? Math.min(Math.round((presentDocs.length / requiredDocs.length) * 100), 100) : 100;
@@ -1201,7 +1262,8 @@
       if (comp && Array.isArray(comp.missingDocs)) {
         return comp.missingDocs;
       }
-      const requiredDocs = getRequiredDocs();
+      const candidate = (App.state.candidates || []).find(c => normalizeText(c.CandidateID || c.candidateId) === cleanId) || {};
+      const requiredDocs = getRequiredDocsForCandidate(candidate, { canonical: true });
       const candidateDocs = (App.state.documents || []).filter(d =>
         normalizeText(d.CandidateID || d.candidateId) === cleanId &&
         normalizeText(d.ApprovalStatus || d.Status) !== 'rejected'
@@ -1259,7 +1321,7 @@
 
       const activeCandidatesCount = activeCount;
 
-      // Count uploaded documents safely using case-insensitive mapping
+      // Iterate through activeCandidates to determine WITH and MISSING counts per document (SSOT)
       activeCandidates.forEach(c => {
         const comp = docCompleteness && docCompleteness[c.CandidateID];
         const safeCompPresent = (comp && Array.isArray(comp.presentDocs))
@@ -1272,17 +1334,19 @@
         );
         const safeUploadedDocs = candDocs.map(d => normalizeText(d.DocType || d.docType));
 
+        // Classification-based required documents for THIS specific candidate
+        const candRequiredNorm = getRequiredDocsForCandidate(c);
+
         requiredDocs.forEach(reqDoc => {
           const safeReq = normalizeText(reqDoc);
-          if (safeCompPresent.includes(safeReq) || safeUploadedDocs.includes(safeReq)) {
+          const hasUploaded = safeCompPresent.includes(safeReq) || safeUploadedDocs.includes(safeReq);
+          if (hasUploaded) {
             withCounts[reqDoc]++;
+          } else if (candRequiredNorm.includes(safeReq)) {
+            // Strictly increment missing count ONLY if required for this candidate's classification
+            missingCounts[reqDoc]++;
           }
         });
-      });
-
-      // Calculate missing documents (Active Candidates - WITH counts)
-      requiredDocs.forEach(doc => {
-        missingCounts[doc] = Math.max(0, activeCandidatesCount - (withCounts[doc] || 0));
       });
 
       const k = {
@@ -3356,6 +3420,7 @@
         </div>
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:var(--sp-3);padding:var(--sp-3)">
           ${Views._infoChip('HR Code', c.HR_Code)}
+          ${Views._infoChip('Classification', c.Classification || c.classification || '—')}
           <div style="background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius);padding:var(--sp-3)">
             <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:4px">Recruitment Type</div>
             <div>
@@ -3432,8 +3497,9 @@
         const el = document.getElementById('docs-section');
 
         // ── Document Completeness Panel ──────────────────────────────────
-        // 1. Sync JavaScript memory cache instantly
-        const newComp = computeCompleteness(docs);
+        // 1. Sync JavaScript memory cache instantly using candidate classification
+        const candidate = (App.state.candidates || []).find(cand => normalizeText(cand.CandidateID) === cleanId) || App.state.selectedCandidate || {};
+        const newComp = computeCompleteness(docs, candidate);
         App.state.docCompleteness[cleanId] = newComp;
 
         // 2. Reactive view sync for table rows if currently in a table view
@@ -3448,9 +3514,8 @@
         if (completenessEl) {
           const presentDocs = newComp.presentDocs;
           const missingDocs = newComp.missingDocs;
-          const totalRequired = (App.state.settings && Array.isArray(App.state.settings.documentTypes) && App.state.settings.documentTypes.length > 0)
-            ? App.state.settings.documentTypes.length
-            : getRequiredDocs().length;
+          const reqDocsForCand = getRequiredDocsForCandidate(candidate, { canonical: true });
+          const totalRequired = reqDocsForCand.length;
           const uploadedCount = Math.min(presentDocs.length, totalRequired);
           const progressPercent = totalRequired > 0
             ? Math.min(Math.round((uploadedCount / totalRequired) * 100), 100)
@@ -4013,6 +4078,13 @@
               <div class="form-group">
                 <label class="form-label" for="nc-hrcode">HR Code <span class="form-optional">(Optional)</span></label>
                 <input class="form-input" type="text" id="nc-hrcode" placeholder="e.g. HR-00123">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="nc-classification">Classification <span class="form-optional">(Optional)</span></label>
+                <select class="form-select" id="nc-classification">
+                  <option value="">— Select classification —</option>
+                  ${(App.state.settings?.classifications || ['Engineers', 'Labors and Technicians']).map(cl => `<option value="${escHtml(cl)}">${escHtml(cl)}</option>`).join('')}
+                </select>
               </div>
               <div class="form-group">
                 <label class="form-label" for="nc-recruitment-type">Recruitment Type <span class="form-optional">(Optional)</span></label>
@@ -6453,8 +6525,9 @@
       <div class="settings-grid" id="settings-grid-container">
         ${Views._renderSettingsCardHtml('staffBatches', '📦 Staff Batches', 'Manage mobilization batches for staff (Staff Batch 1 to 5+).', App.state.settings?.staffBatches || [], 'e.g. Staff Batch 6')}
         ${Views._renderSettingsCardHtml('kalhatBatches', '📦 Kalhat Batches', 'Manage batches designated for Kalhat site operations.', App.state.settings?.kalhatBatches || [], 'e.g. Kalhat Batch 3')}
+        ${Views._renderSettingsCardHtml('classifications', '👥 Candidate Classifications', 'Manage candidate classifications (e.g. Engineers, Labors and Technicians) for role-based document requirements.', App.state.settings?.classifications || [], 'e.g. Project Managers')}
         ${Views._renderStatusSettingsCardHtml()}
-        ${Views._renderSettingsCardHtml('documentTypes', '📄 Canonical Document Types', 'Manage required documents tracked across candidates.', App.state.settings?.documentTypes || [], 'e.g. Driving License')}
+        ${Views._renderDocumentTypesSettingsCardHtml()}
         ${Views._renderSettingsCardHtml('departments', '🏢 Departments', 'Manage corporate departments for candidate assignment.', App.state.settings?.departments || [], 'e.g. Logistics')}
         ${Views._renderSettingsCardHtml('nationalities', '🌍 Nationalities', 'Manage selectable candidate nationalities.', App.state.settings?.nationalities || [], 'e.g. Tunisian')}
         ${Views._renderSettingsCardHtml('positions', '💼 Job Positions', 'Manage common candidate job positions.', App.state.settings?.positions || [], 'e.g. QA/QC Inspector')}
@@ -6508,6 +6581,146 @@
           <button type="button" class="settings-btn-icon settings-btn-icon--delete" title="Delete" onclick="Views._deleteSettingItem('${categoryKey}', ${idx})">🗑️</button>
         </div>
       </div>`;
+    },
+
+    _renderDocumentTypesSettingsCardHtml() {
+      const docTypes = App.state.settings?.documentTypes || [];
+      const allClasses = App.state.settings?.classifications || ['Engineers', 'Labors and Technicians'];
+      const count = docTypes.length;
+      return `
+      <div class="settings-card" id="card-documentTypes">
+        <div class="settings-card__header">
+          <div class="settings-card__title-row">
+            <h2 class="settings-card__title">📄 Canonical Document Types & Classification Rules</h2>
+            <span class="settings-card__badge" id="badge-documentTypes">${count} Document Types</span>
+          </div>
+          <p class="settings-card__desc">Manage required document types and select which candidate classifications each document strictly applies to. Documents with no classifications checked apply universally.</p>
+        </div>
+        <div class="settings-card__body" id="list-documentTypes">
+          ${docTypes.map((item, idx) => {
+            const isFirst = idx === 0;
+            const isLast = idx === docTypes.length - 1;
+            const name = typeof item === 'object' && item !== null ? (item.name || '') : String(item || '');
+            const assignedClasses = (typeof item === 'object' && item !== null && Array.isArray(item.classifications))
+              ? item.classifications
+              : [];
+            return `
+            <div class="settings-item-row" id="row-documentTypes-${idx}" style="flex-direction:column;align-items:stretch;gap:6px">
+              <div style="display:flex;align-items:center;justify-content:space-between;width:100%">
+                <div class="settings-item-label-wrap">
+                  <span class="settings-item-idx">#${idx + 1}</span>
+                  <span class="settings-item-name">${escHtml(name)}</span>
+                </div>
+                <div class="settings-item-actions">
+                  <button type="button" class="settings-btn-icon" title="Move Up" ${isFirst ? 'disabled' : ''} onclick="Views._moveSettingItem(\'documentTypes\', ${idx}, -1)">▲</button>
+                  <button type="button" class="settings-btn-icon" title="Move Down" ${isLast ? 'disabled' : ''} onclick="Views._moveSettingItem(\'documentTypes\', ${idx}, 1)">▼</button>
+                  <button type="button" class="settings-btn-icon" title="Edit Name" onclick="Views._editDocTypeItem(${idx})">✏️</button>
+                  <button type="button" class="settings-btn-icon settings-btn-icon--delete" title="Delete" onclick="Views._deleteDocTypeItem(${idx})">🗑️</button>
+                </div>
+              </div>
+              <div class="settings-doc-classes" style="padding-left:34px">
+                <span style="font-size:0.72rem;color:var(--text-muted);margin-right:4px">Applies to:</span>
+                ${allClasses.map(cls => {
+                  const normCls = normalizeText(cls);
+                  const isChecked = assignedClasses.length === 0 || assignedClasses.some(c => normalizeText(c) === normCls);
+                  return `
+                    <label class="settings-doc-class-pill ${isChecked ? 'active' : ''}" title="Check to require ${escHtml(name)} for ${escHtml(cls)}">
+                      <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="Views._toggleDocClassification(${idx}, \'${escHtml(cls).replace(/'/g, "\\'")}\', this.checked)" />
+                      <span>${escHtml(cls)}</span>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+        <div class="settings-card__add-box">
+          <input type="text" id="input-add-documentTypes" class="form-input" placeholder="e.g. Driving License" onkeydown="if(event.key===\'Enter\')Views._addDocTypeItem()" />
+          <button type="button" class="btn btn--outline btn--sm" onclick="Views._addDocTypeItem()">＋ Add</button>
+        </div>
+        <div class="settings-card__footer">
+          <button type="button" class="btn btn--primary btn--sm" id="btn-save-documentTypes" onclick="Views._saveSettingCategory(\'documentTypes\')">
+            💾 Save Document Types
+          </button>
+        </div>
+      </div>`;
+    },
+
+    _toggleDocClassification(docIdx, classification, isChecked) {
+      if (!App.state.settings.documentTypes) return;
+      const doc = App.state.settings.documentTypes[docIdx];
+      if (!doc) return;
+      const allClasses = App.state.settings.classifications || ['Engineers', 'Labors and Technicians'];
+      let docObj = doc;
+      if (typeof doc === 'string') {
+        docObj = { name: doc, classifications: [...allClasses] };
+        App.state.settings.documentTypes[docIdx] = docObj;
+      }
+      if (!Array.isArray(docObj.classifications)) {
+        docObj.classifications = [...allClasses];
+      }
+      const norm = normalizeText(classification);
+      if (isChecked) {
+        if (!docObj.classifications.some(c => normalizeText(c) === norm)) {
+          docObj.classifications.push(classification);
+        }
+      } else {
+        docObj.classifications = docObj.classifications.filter(c => normalizeText(c) !== norm);
+      }
+      Views._refreshSettingsCard('documentTypes');
+    },
+
+    _addDocTypeItem() {
+      const input = document.getElementById('input-add-documentTypes');
+      const val = (input?.value || '').trim();
+      if (!val) {
+        Toast.warning('Please enter a document type name.');
+        return;
+      }
+      if (!App.state.settings.documentTypes) App.state.settings.documentTypes = [];
+      const list = App.state.settings.documentTypes;
+      const safeNorm = (str) => normalizeText(typeof str === 'object' && str !== null ? str.name : str);
+      if (list.some(item => safeNorm(item) === normalizeText(val))) {
+        Toast.error('This document type already exists.');
+        return;
+      }
+      const allClasses = App.state.settings.classifications || ['Engineers', 'Labors and Technicians'];
+      list.push({
+        name: val,
+        classifications: [...allClasses]
+      });
+      input.value = '';
+      Views._refreshSettingsCard('documentTypes');
+      Toast.info(`Added "${val}". Remember to Save Document Types.`);
+    },
+
+    _editDocTypeItem(idx) {
+      const list = App.state.settings.documentTypes;
+      if (!list || !list[idx]) return;
+      const current = typeof list[idx] === 'object' ? list[idx].name : list[idx];
+      const updated = window.prompt('Edit Document Type name:', current);
+      if (updated === null) return;
+      const trimmed = updated.trim();
+      if (!trimmed) {
+        Toast.warning('Document name cannot be empty.');
+        return;
+      }
+      if (typeof list[idx] === 'object') {
+        list[idx].name = trimmed;
+      } else {
+        list[idx] = { name: trimmed, classifications: [...(App.state.settings.classifications || [])] };
+      }
+      Views._refreshSettingsCard('documentTypes');
+    },
+
+    _deleteDocTypeItem(idx) {
+      const list = App.state.settings.documentTypes;
+      if (!list || !list[idx]) return;
+      const name = typeof list[idx] === 'object' ? list[idx].name : list[idx];
+      if (!window.confirm(`Are you sure you want to remove "${name}" from Document Types?`)) return;
+      list.splice(idx, 1);
+      Views._refreshSettingsCard('documentTypes');
+      Toast.info(`Removed "${name}". Remember to Save Document Types.`);
     },
 
     _renderStatusSettingsCardHtml() {
@@ -6651,11 +6864,13 @@
       const tempWrap = document.createElement('div');
       if (categoryKey === 'statuses') {
         tempWrap.innerHTML = Views._renderStatusSettingsCardHtml();
+      } else if (categoryKey === 'documentTypes') {
+        tempWrap.innerHTML = Views._renderDocumentTypesSettingsCardHtml();
       } else {
         const titles = {
           staffBatches: ['📦 Staff Batches', 'Manage mobilization batches for staff (Staff Batch 1 to 5+).', 'e.g. Staff Batch 6'],
           kalhatBatches: ['📦 Kalhat Batches', 'Manage batches designated for Kalhat site operations.', 'e.g. Kalhat Batch 3'],
-          documentTypes: ['📄 Canonical Document Types', 'Manage required documents tracked across candidates.', 'e.g. Driving License'],
+          classifications: ['👥 Candidate Classifications', 'Manage candidate classifications (e.g. Engineers, Labors and Technicians) for role-based document requirements.', 'e.g. Project Managers'],
           departments: ['🏢 Departments', 'Manage corporate departments for candidate assignment.', 'e.g. Logistics'],
           nationalities: ['🌍 Nationalities', 'Manage selectable candidate nationalities.', 'e.g. Tunisian'],
           positions: ['💼 Job Positions', 'Manage common candidate job positions.', 'e.g. QA/QC Inspector']
@@ -6689,7 +6904,7 @@
         }
 
         // 3. Single RPC Call
-        const res = await GAS.call('api_updateSystemSettings', payload);
+        const res = await GAS.call('api_saveSettings', payload);
 
         if (res && res.success) {
           // 4. Update memory safely with backend-sanitized result

@@ -182,26 +182,34 @@ function api_getAllCandidates() {
       }
 
       const settings = (typeof api_getSystemSettings === 'function' ? api_getSystemSettings().data : null) || DEFAULT_SYSTEM_SETTINGS;
-      const REQUIRED_DOCS = (settings && Array.isArray(settings.documentTypes) && settings.documentTypes.length > 0)
+      const docRules = (settings && Array.isArray(settings.documentTypes) && settings.documentTypes.length > 0)
         ? settings.documentTypes
-        : [
-          'Passport', 'Photo', 'Academic Certificate',
-          'Medical Examination', 'Medical Analysis', 'Visa', 'CV'
-        ];
+        : DEFAULT_SYSTEM_SETTINGS.documentTypes;
 
       candidates.forEach(cand => {
         const candDocs = approvedDocsByCand[cand.CandidateID] || {};
+        const candClass = String(cand.Classification || cand.classification || '').trim().toLowerCase();
+
+        // Filter required docs specifically for this candidate's classification
+        const candRequiredDocs = docRules.filter(rule => {
+          if (!rule) return false;
+          const classifications = (typeof rule === 'object' && rule !== null) ? rule.classifications : null;
+          if (!classifications || !Array.isArray(classifications) || classifications.length === 0) return true;
+          return classifications.some(cls => String(cls || '').trim().toLowerCase() === candClass);
+        }).map(rule => (typeof rule === 'object' && rule !== null ? (rule.name || rule.val || '') : String(rule)));
+
         const presentDocs = [];
         const missingDocs = [];
-        REQUIRED_DOCS.forEach(dt => {
-          if (candDocs[dt.trim().toLowerCase()]) presentDocs.push(dt);
-          else missingDocs.push(dt);
+        candRequiredDocs.forEach(dt => {
+          const cleanDt = String(dt).trim();
+          if (candDocs[cleanDt.toLowerCase()]) presentDocs.push(cleanDt);
+          else missingDocs.push(cleanDt);
         });
         cand.docCompleteness = {
           status: 'ok',
           presentDocs: presentDocs,
           missingDocs: missingDocs,
-          pct: REQUIRED_DOCS.length > 0 ? Math.round((presentDocs.length / REQUIRED_DOCS.length) * 100) : 100
+          pct: candRequiredDocs.length > 0 ? Math.round((presentDocs.length / candRequiredDocs.length) * 100) : 100
         };
       });
     } catch (docErr) {
@@ -892,18 +900,22 @@ const DEFAULT_SYSTEM_SETTINGS = {
     'Unfit-Injury',
     'Unfit-PCR'
   ],
+  classifications: [
+    'Engineers',
+    'Labors and Technicians'
+  ],
   recruitmentTypes: [
     'Internal',
     'External'
   ],
   documentTypes: [
-    'Passport',
-    'Photo',
-    'Academic Certificate',
-    'Medical Examination',
-    'Medical Analysis',
-    'Visa',
-    'CV'
+    { name: 'Passport', classifications: ['Engineers', 'Labors and Technicians'] },
+    { name: 'Photo', classifications: ['Engineers', 'Labors and Technicians'] },
+    { name: 'Academic Certificate', classifications: ['Engineers'] },
+    { name: 'Medical Examination', classifications: ['Engineers', 'Labors and Technicians'] },
+    { name: 'Medical Analysis', classifications: ['Engineers', 'Labors and Technicians'] },
+    { name: 'Visa', classifications: ['Engineers', 'Labors and Technicians'] },
+    { name: 'CV', classifications: ['Engineers', 'Labors and Technicians'] }
   ],
   departments: [
     'Projects',
@@ -1019,12 +1031,45 @@ function getOrCreateSettingsFromDb_() {
     catRows[cat].push({ val, order });
   }
 
+  const metaCol = headers.indexOf('ItemMeta');
+  for (let i = 1; i < data.length; i++) {
+    const cat = String(data[i][catCol] || '').trim();
+    const val = String(data[i][valCol] || '').trim();
+    const meta = metaCol !== -1 && data[i][metaCol] ? String(data[i][metaCol]).trim() : '';
+    if (!cat || !val) continue;
+    if (catRows[cat]) {
+      const existing = catRows[cat].find(x => x.val === val);
+      if (existing) existing.meta = meta;
+    }
+  }
+
   Object.keys(DEFAULT_SYSTEM_SETTINGS).forEach(cat => {
     if (catRows[cat] && catRows[cat].length > 0) {
       catRows[cat].sort((a, b) => a.order - b.order);
-      settings[cat] = catRows[cat].map(item => item.val);
+      if (cat === 'documentTypes') {
+        settings[cat] = catRows[cat].map(item => {
+          let classifications = [];
+          if (item.meta) {
+            try {
+              const parsed = JSON.parse(item.meta);
+              if (Array.isArray(parsed)) classifications = parsed;
+              else if (parsed && Array.isArray(parsed.classifications)) classifications = parsed.classifications;
+            } catch (_) {}
+          }
+          if (!classifications || classifications.length === 0) {
+            const defMatch = DEFAULT_SYSTEM_SETTINGS.documentTypes.find(d => (d.name || d) === item.val);
+            classifications = defMatch && defMatch.classifications ? [...defMatch.classifications] : ['Engineers', 'Labors and Technicians'];
+          }
+          return {
+            name: item.val,
+            classifications: classifications
+          };
+        });
+      } else {
+        settings[cat] = catRows[cat].map(item => item.val);
+      }
     } else {
-      settings[cat] = [...DEFAULT_SYSTEM_SETTINGS[cat]];
+      settings[cat] = JSON.parse(JSON.stringify(DEFAULT_SYSTEM_SETTINGS[cat]));
     }
   });
 
@@ -1037,6 +1082,10 @@ function getOrCreateSettingsFromDb_() {
 /**
  * Public: Alias for api_getSystemSettings to support both naming conventions seamlessly.
  */
+function api_saveSettings(categoryKeyOrObject, itemsArray = null) {
+  return api_updateSystemSettings(categoryKeyOrObject, itemsArray);
+}
+
 function api_getSettings() {
   return api_getSystemSettings();
 }
@@ -1076,19 +1125,35 @@ function api_updateSystemSettings(categoryKeyOrObject, itemsArray = null) {
       ? categoryKeyOrObject
       : { [categoryKeyOrObject]: itemsArray };
 
-    // Clean arrays: remove empty strings, trim, and deduplicate case-insensitively
+    // Clean arrays: handle strings and documentTypes objects cleanly
     for (const key in updates) {
       if (Array.isArray(updates[key])) {
-        const seen = new Set();
-        updates[key] = updates[key].reduce((acc, item) => {
-          const cleanItem = String(item || '').trim();
-          const lowerItem = cleanItem.toLowerCase();
-          if (cleanItem !== '' && !seen.has(lowerItem)) {
-            seen.add(lowerItem);
-            acc.push(cleanItem); // Keep original case, but prevent duplicates
-          }
-          return acc;
-        }, []);
+        if (key === 'documentTypes') {
+          const seen = new Set();
+          updates[key] = updates[key].reduce((acc, item) => {
+            const name = typeof item === 'object' && item !== null ? String(item.name || item.val || '').trim() : String(item || '').trim();
+            const lowerName = name.toLowerCase();
+            if (name !== '' && !seen.has(lowerName)) {
+              seen.add(lowerName);
+              const classifications = (typeof item === 'object' && item !== null && Array.isArray(item.classifications))
+                ? item.classifications.map(c => String(c).trim()).filter(Boolean)
+                : ['Engineers', 'Labors and Technicians'];
+              acc.push({ name, classifications });
+            }
+            return acc;
+          }, []);
+        } else {
+          const seen = new Set();
+          updates[key] = updates[key].reduce((acc, item) => {
+            const cleanItem = String(item || '').trim();
+            const lowerItem = cleanItem.toLowerCase();
+            if (cleanItem !== '' && !seen.has(lowerItem)) {
+              seen.add(lowerItem);
+              acc.push(cleanItem); // Keep original case, but prevent duplicates
+            }
+            return acc;
+          }, []);
+        }
       }
     }
 
@@ -1141,8 +1206,15 @@ function api_updateSystemSettings(categoryKeyOrObject, itemsArray = null) {
       const items = Array.isArray(updates[catKey]) ? updates[catKey] : [];
       items.forEach((item, idx) => {
         maxIdNum++;
-        const val = typeof item === 'object' && item !== null ? (item.val || item.value || JSON.stringify(item)) : String(item).trim();
-        const meta = typeof item === 'object' && item !== null && item.meta ? JSON.stringify(item.meta) : '';
+        let val = '';
+        let meta = '';
+        if (catKey === 'documentTypes' && typeof item === 'object' && item !== null) {
+          val = String(item.name || item.val || '').trim();
+          meta = JSON.stringify({ classifications: item.classifications || [] });
+        } else {
+          val = typeof item === 'object' && item !== null ? (item.val || item.value || JSON.stringify(item)) : String(item).trim();
+          meta = typeof item === 'object' && item !== null && item.meta ? JSON.stringify(item.meta) : '';
+        }
         newCategoryRows.push([
           'SET-' + String(maxIdNum).padStart(4, '0'),
           catKey,

@@ -179,7 +179,8 @@ function api_getDocumentsCenterData(filtersJson) {
       var missCount = 0;
       
       for (var m = 0; m < docTypesList.length; m++) {
-        var type = docTypesList[m];
+        var typeItem = docTypesList[m];
+        var type = typeof typeItem === 'object' && typeItem !== null ? (typeItem.name || '') : typeItem;
         if (candDocs[type]) {
           docSummary[type] = "Available";
           availCount++;

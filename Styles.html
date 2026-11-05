@@ -2650,6 +2650,51 @@ body.dark-mode .settings-btn-icon--delete:hover:not(:disabled) {
   display: flex;
   justify-content: flex-end;
 }
+.settings-doc-classes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+.settings-doc-class-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 9999px;
+  padding: 2px 9px;
+  cursor: pointer;
+  user-select: none;
+  transition: all var(--trans-fast);
+}
+.settings-doc-class-pill:hover {
+  border-color: var(--primary);
+}
+.settings-doc-class-pill.active {
+  background: rgba(37, 99, 235, 0.08);
+  border-color: var(--primary);
+  color: var(--primary);
+  font-weight: 600;
+}
+.settings-doc-class-pill input[type="checkbox"] {
+  accent-color: var(--primary);
+  cursor: pointer;
+  margin: 0;
+}
+body.dark-mode .settings-doc-class-pill {
+  background: #1e293b;
+  border-color: #334155;
+  color: #94a3b8;
+}
+body.dark-mode .settings-doc-class-pill.active {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: #38bdf8;
+  color: #38bdf8;
+}
 .settings-checkbox-label {
   display: inline-flex;
   align-items: center;
