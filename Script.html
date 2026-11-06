@@ -4389,22 +4389,19 @@
                 <input class="form-input" type="tel" id="nc-phone" required placeholder="+201012345678">
               </div>
               <div class="form-group">
-                <label class="form-label" for="nc-nationality">Nationality <span class="required">*</span></label>
-                <select class="form-select" id="nc-nationality" required>
-                  <option value="">Select nationality…</option>
-                  ${(App.state.settings?.nationalities || ['Egyptian', 'Sudanese', 'Jordanian', 'Saudi', 'Yemeni', 'Moroccan', 'Other']).map(n => `<option value="${escHtml(n)}">${escHtml(n)}</option>`).join('')}
-                </select>
+                <label class="form-label" for="new-nationality">Nationality <span class="required">*</span></label>
+                <input class="form-input form-control" list="nationalities-datalist" id="new-nationality" placeholder="Type to search nationality..." required autocomplete="off">
+                <datalist id="nationalities-datalist"></datalist>
               </div>
               <div class="form-group">
-                <label class="form-label" for="nc-position">Job Position <span class="required">*</span></label>
-                <input class="form-input" type="text" id="nc-position" required placeholder="Civil Engineer">
+                <label class="form-label" for="new-position">Job Position <span class="required">*</span></label>
+                <input class="form-input form-control" list="positions-datalist" id="new-position" placeholder="Type to search position..." required autocomplete="off">
+                <datalist id="positions-datalist"></datalist>
               </div>
               <div class="form-group">
-                <label class="form-label" for="nc-department">Department <span class="required">*</span></label>
-                <select class="form-select" id="nc-department" required>
-                  <option value="">Select department…</option>
-                  ${(App.state.settings?.departments || ['Projects', 'Maintenance', 'Finance', 'HR', 'Operations', 'IT', 'Safety']).map(d => `<option value="${escHtml(d)}">${escHtml(d)}</option>`).join('')}
-                </select>
+                <label class="form-label" for="new-department">Department <span class="required">*</span></label>
+                <input class="form-input form-control" list="departments-datalist" id="new-department" placeholder="Type to search department..." required autocomplete="off">
+                <datalist id="departments-datalist"></datalist>
               </div>
               <div class="form-group">
                 <label class="form-label" for="nc-salary">Salary (OMR) <span class="required">*</span></label>
@@ -4456,26 +4453,99 @@
           </form>
         </div>
       </div>`;
+
+      // Helper to dynamically populate native datalists from SSOT
+      const populateDatalist = (dataArray, datalistId) => {
+        const datalist = document.getElementById(datalistId);
+        if (!datalist || !Array.isArray(dataArray)) return;
+
+        datalist.innerHTML = ''; // Clear existing options
+        const fragment = document.createDocumentFragment();
+
+        dataArray.forEach(item => {
+          // Handle both simple string arrays and object schemas from settings
+          const val = typeof item === 'string' ? item : (item.name || item.val || '');
+          if (val) {
+            const option = document.createElement('option');
+            option.value = val;
+            fragment.appendChild(option);
+          }
+        });
+        datalist.appendChild(fragment);
+      };
+
+      // Populate datalists from SSOT
+      if (App.state.settings) {
+        populateDatalist(App.state.settings.positions, 'positions-datalist');
+        populateDatalist(App.state.settings.nationalities, 'nationalities-datalist');
+        populateDatalist(App.state.settings.departments, 'departments-datalist');
+      }
     },
 
     async _submitNewCandidate(e) {
       e.preventDefault();
       const btn = document.getElementById('submit-btn');
-      btn.disabled = true;
-      btn.innerHTML = `<span class="spinner"></span> Creating…`;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="spinner"></span> Creating…`;
+      }
 
       const fullName = (document.getElementById('nc-name')?.value || '').trim();
       const email = (document.getElementById('nc-email')?.value || '').trim();
       const phone = (document.getElementById('nc-phone')?.value || '').trim();
-      const nationality = document.getElementById('nc-nationality')?.value || '';
-      const position = (document.getElementById('nc-position')?.value || '').trim();
-      const department = document.getElementById('nc-department')?.value || '';
-      const salary = document.getElementById('nc-salary')?.value || '';
+      const nationalityInput = (document.getElementById('new-nationality')?.value || document.getElementById('nc-nationality')?.value || '').trim();
+      const positionInput = (document.getElementById('new-position')?.value || document.getElementById('nc-position')?.value || '').trim();
+      const deptInput = (document.getElementById('new-department')?.value || document.getElementById('nc-department')?.value || '').trim();
+      const salary = (document.getElementById('nc-salary')?.value || '').trim();
       const coordinatorEmail = (document.getElementById('nc-coordinator')?.value || '').trim() || App.state.currentUser.email;
       const hrCode = (document.getElementById('nc-hrcode')?.value || '').trim();
       const classification = (document.getElementById('nc-classification')?.value || document.getElementById('new-classification')?.value || document.getElementById('candidate-classification')?.value || '').trim();
       const recruitmentType = document.getElementById('nc-recruitment-type')?.value || '';
       const batchNumber = (document.getElementById('nc-batch')?.value || '').trim();
+
+      // Ensure normalizeText helper is available
+      const isValidSSOT = (val, settingsArray) => {
+        if (!settingsArray || !val) return false;
+        return settingsArray.some(item => {
+          const itemVal = typeof item === 'string' ? item : (item.name || item.val || '');
+          return normalizeText(itemVal) === normalizeText(val);
+        });
+      };
+
+      const getCanonicalSSOT = (val, settingsArray) => {
+        if (!settingsArray || !val) return val;
+        const match = settingsArray.find(item => {
+          const itemVal = typeof item === 'string' ? item : (item.name || item.val || '');
+          return normalizeText(itemVal) === normalizeText(val);
+        });
+        return match ? (typeof match === 'string' ? match : (match.name || match.val || val)) : val;
+      };
+
+      const settingsPositions = (App.state.settings && App.state.settings.positions) || ['Civil Engineer', 'Electrical Engineer', 'Mechanical Engineer', 'Safety Officer', 'Surveyor', 'Foreman', 'HR Specialist', 'Accountant', 'Admin'];
+      const settingsNationalities = (App.state.settings && App.state.settings.nationalities) || ['Egyptian', 'Sudanese', 'Jordanian', 'Saudi', 'Yemeni', 'Moroccan', 'Other'];
+      const settingsDepts = (App.state.settings && App.state.settings.departments) || ['Projects', 'Maintenance', 'Finance', 'HR', 'Operations', 'IT', 'Safety'];
+
+      if (!isValidSSOT(positionInput, settingsPositions) ||
+          !isValidSSOT(nationalityInput, settingsNationalities) ||
+          !isValidSSOT(deptInput, settingsDepts)) {
+
+        if (typeof Toast !== 'undefined' && Toast.warning) {
+          Toast.warning('Please select a valid Position, Nationality, and Department from the exact drop-down list.');
+        } else if (typeof App.showToast === 'function') {
+          App.showToast('Please select a valid Position, Nationality, and Department from the exact drop-down list.', 'warning');
+        } else {
+          alert('Please select valid options from the lists.');
+        }
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '＋ Create Candidate';
+        }
+        return; // Halt submission
+      }
+
+      const position = getCanonicalSSOT(positionInput, settingsPositions);
+      const nationality = getCanonicalSSOT(nationalityInput, settingsNationalities);
+      const department = getCanonicalSSOT(deptInput, settingsDepts);
 
       const payload = {
         fullName,
