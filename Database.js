@@ -257,7 +257,7 @@ function api_getCandidates() {
 /**
  * Creates a new candidate record in the Candidates sheet.
  * Schema-safe dynamic column mapping: dynamically maps fields to matching header positions.
- * @param {object} candidateData - { fullName, position, department, email, phone, nationality, salary, coordinatorEmail, hrCode, recruitmentType, localServerPath, batchNumber }
+ * @param {object} candidateData - { fullName, position, department, email, phone, nationality, salary, coordinatorEmail, hrCode, recruitmentType, localServerPath, batchNumber, classification }
  */
 function api_createCandidate(candidateData) {
   const auth = requireRole_(['Admin', 'HR']);
@@ -268,35 +268,43 @@ function api_createCandidate(candidateData) {
     const now = new Date().toISOString();
 
     // LocalServerPath is optional; enforce the 500-char max defensively.
-    const localServerPath = (candidateData.localServerPath || '').toString().slice(0, 500);
+    const localServerPath = (candidateData.localServerPath || candidateData.LocalServerPath || '').toString().slice(0, 500);
 
     // HR_Code and Recruitment_Type — optional; validate Recruitment_Type enum.
-    const hrCode = (candidateData.hrCode || '').toString().trim();
+    const hrCode = (candidateData.hrCode || candidateData.HR_Code || '').toString().trim();
     const ALLOWED_RECRUITMENT_TYPES = new Set(['Internal', 'External']);
-    const recruitmentType = ALLOWED_RECRUITMENT_TYPES.has(candidateData.recruitmentType)
-      ? candidateData.recruitmentType
+    const rawRecruitmentType = candidateData.recruitmentType || candidateData.Recruitment_Type || '';
+    const recruitmentType = ALLOWED_RECRUITMENT_TYPES.has(rawRecruitmentType)
+      ? rawRecruitmentType
       : '';
+
+    // Classification
+    const classification = (candidateData.classification || candidateData.Classification || '').toString().trim();
 
     const headers = sheet.getDataRange().getValues()[0] || [];
     const newRow = new Array(headers.length).fill('');
 
     const setField = (colName, value) => {
-      const idx = headers.indexOf(colName);
+      let idx = headers.indexOf(colName);
+      if (idx === -1) {
+        const normTarget = colName.toLowerCase().replace(/[-_\s]/g, '');
+        idx = headers.findIndex(h => String(h || '').toLowerCase().replace(/[-_\s]/g, '') === normTarget);
+      }
       if (idx !== -1) {
         newRow[idx] = value !== undefined && value !== null ? value : '';
       }
     };
 
     setField('CandidateID', id);
-    setField('FullName', candidateData.fullName || '');
-    setField('Position', candidateData.position || '');
-    setField('Department', candidateData.department || '');
-    setField('Email', candidateData.email || '');
-    setField('Phone', candidateData.phone || '');
-    setField('Nationality', candidateData.nationality || '');
+    setField('FullName', candidateData.fullName || candidateData.FullName || '');
+    setField('Position', candidateData.position || candidateData.Position || '');
+    setField('Department', candidateData.department || candidateData.Department || '');
+    setField('Email', candidateData.email || candidateData.Email || '');
+    setField('Phone', candidateData.phone || candidateData.Phone || '');
+    setField('Nationality', candidateData.nationality || candidateData.Nationality || '');
 
     // OfferSalary with fallback to Salary
-    const salaryVal = candidateData.salary !== undefined ? candidateData.salary : (candidateData.offerSalary || '');
+    const salaryVal = candidateData.salary !== undefined ? candidateData.salary : (candidateData.offerSalary !== undefined ? candidateData.offerSalary : (candidateData.OfferSalary || ''));
     if (headers.indexOf('OfferSalary') !== -1) {
       setField('OfferSalary', salaryVal);
     } else {
@@ -304,7 +312,7 @@ function api_createCandidate(candidateData) {
     }
 
     // AssignedCoordinatorEmail with fallback to CoordinatorEmail
-    const coordVal = candidateData.coordinatorEmail !== undefined ? candidateData.coordinatorEmail : (candidateData.assignedCoordinatorEmail || '');
+    const coordVal = candidateData.coordinatorEmail !== undefined ? candidateData.coordinatorEmail : (candidateData.assignedCoordinatorEmail || candidateData.AssignedCoordinatorEmail || '');
     if (headers.indexOf('AssignedCoordinatorEmail') !== -1) {
       setField('AssignedCoordinatorEmail', coordVal);
     } else {
@@ -315,22 +323,30 @@ function api_createCandidate(candidateData) {
     setField('CreatedAt', now);
     setField('UpdatedAt', now);
     setField('DriveFolderID', '');
-    setField('Notes', '');
+    setField('Notes', candidateData.notes || candidateData.Notes || '');
     setField('LocalServerPath', localServerPath);
     setField('HR_Code', hrCode);
+    setField('Classification', classification);
     setField('Recruitment_Type', recruitmentType);
 
     // Batch_Number with fallback to BatchNumber
-    const batchVal = (candidateData.batchNumber || candidateData.batch_number || '').toString().trim();
+    const batchVal = (candidateData.batchNumber || candidateData.Batch_Number || candidateData.batch_number || '').toString().trim();
     if (headers.indexOf('Batch_Number') !== -1) {
       setField('Batch_Number', batchVal);
     } else {
       setField('BatchNumber', batchVal);
     }
 
+    // Dynamic fallback for any additional matching headers
+    headers.forEach((header, index) => {
+      if (newRow[index] === '' && candidateData[header] !== undefined && candidateData[header] !== null) {
+        newRow[index] = candidateData[header];
+      }
+    });
+
     sheet.appendRow(newRow);
 
-    api_writeLog_(id, 'SYSTEM', 'Candidate Created: ' + candidateData.fullName);
+    api_writeLog_(id, 'SYSTEM', 'Candidate Created: ' + (candidateData.fullName || candidateData.FullName));
     // [CACHE POLICY] Write operation — invalidate dashboard cache immediately
     CacheService.getScriptCache().remove('dashboard_data');
     return { success: true, candidateId: id };
@@ -338,6 +354,14 @@ function api_createCandidate(candidateData) {
     Logger.log(e);
     return { success: false, error: e.message };
   }
+}
+
+/**
+ * SSOT Alias for api_createCandidate
+ * Enables seamless compatibility with GAS.call('api_addCandidate')
+ */
+function api_addCandidate(candidateData) {
+  return api_createCandidate(candidateData);
 }
 
 /**

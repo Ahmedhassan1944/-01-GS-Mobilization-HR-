@@ -396,7 +396,29 @@
       if (fnName === 'api_massiveDriveExport') return { success: true, folderId: 'mock-folder-' + Date.now(), folderUrl: 'https://drive.google.com' };
       if (fnName === 'api_getAllDocuments') return { success: true, data: documents };
       if (fnName === 'api_getAllCandidates' || fnName === 'api_getCandidates') return { success: true, data: candidates };
-      if (fnName === 'api_createCandidate') return { success: true, candidateId: 'new-' + Date.now() };
+      if (fnName === 'api_createCandidate' || fnName === 'api_addCandidate') {
+        const payload = args[0] || {};
+        const newId = 'new-' + Date.now();
+        const newCand = {
+          CandidateID: newId,
+          FullName: payload.fullName || payload.FullName || '',
+          Email: payload.email || payload.Email || '',
+          Phone: payload.phone || payload.Phone || '',
+          Nationality: payload.nationality || payload.Nationality || '',
+          Position: payload.position || payload.Position || '',
+          Department: payload.department || payload.Department || '',
+          OfferSalary: payload.salary || payload.offerSalary || payload.OfferSalary || '',
+          CurrentStatus: 'Documents Requested',
+          HR_Code: payload.hrCode || payload.HR_Code || '',
+          Classification: payload.classification || payload.Classification || '',
+          Recruitment_Type: payload.recruitmentType || payload.Recruitment_Type || '',
+          Batch_Number: payload.batchNumber || payload.Batch_Number || '',
+          CreatedAt: new Date().toISOString(),
+          UpdatedAt: new Date().toISOString()
+        };
+        candidates.unshift(newCand);
+        return { success: true, candidateId: newId };
+      }
       if (fnName === 'api_updateCandidateStatus') return { success: true };
       if (fnName === 'api_updateCandidateDetails') {
         const firstArg = args[0];
@@ -4413,18 +4435,44 @@
       btn.disabled = true;
       btn.innerHTML = `<span class="spinner"></span> Creating…`;
 
+      const fullName = (document.getElementById('nc-name')?.value || '').trim();
+      const email = (document.getElementById('nc-email')?.value || '').trim();
+      const phone = (document.getElementById('nc-phone')?.value || '').trim();
+      const nationality = document.getElementById('nc-nationality')?.value || '';
+      const position = (document.getElementById('nc-position')?.value || '').trim();
+      const department = document.getElementById('nc-department')?.value || '';
+      const salary = document.getElementById('nc-salary')?.value || '';
+      const coordinatorEmail = (document.getElementById('nc-coordinator')?.value || '').trim() || App.state.currentUser.email;
+      const hrCode = (document.getElementById('nc-hrcode')?.value || '').trim();
+      const classification = (document.getElementById('nc-classification')?.value || document.getElementById('new-classification')?.value || document.getElementById('candidate-classification')?.value || '').trim();
+      const recruitmentType = document.getElementById('nc-recruitment-type')?.value || '';
+      const batchNumber = (document.getElementById('nc-batch')?.value || '').trim();
+
       const payload = {
-        fullName: document.getElementById('nc-name').value.trim(),
-        email: document.getElementById('nc-email').value.trim(),
-        phone: document.getElementById('nc-phone').value.trim(),
-        nationality: document.getElementById('nc-nationality').value,
-        position: document.getElementById('nc-position').value.trim(),
-        department: document.getElementById('nc-department').value,
-        salary: document.getElementById('nc-salary').value,
-        coordinatorEmail: document.getElementById('nc-coordinator').value.trim() || App.state.currentUser.email,
-        hrCode: document.getElementById('nc-hrcode').value.trim(),
-        recruitmentType: document.getElementById('nc-recruitment-type').value,
-        batchNumber: document.getElementById('nc-batch').value.trim()
+        fullName,
+        FullName: fullName,
+        email,
+        Email: email,
+        phone,
+        Phone: phone,
+        nationality,
+        Nationality: nationality,
+        position,
+        Position: position,
+        department,
+        Department: department,
+        salary,
+        OfferSalary: salary,
+        coordinatorEmail,
+        AssignedCoordinatorEmail: coordinatorEmail,
+        hrCode,
+        HR_Code: hrCode,
+        classification,
+        Classification: classification,
+        recruitmentType,
+        Recruitment_Type: recruitmentType,
+        batchNumber,
+        Batch_Number: batchNumber
       };
 
       try {
