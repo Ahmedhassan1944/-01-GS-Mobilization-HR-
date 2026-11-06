@@ -1072,6 +1072,9 @@
         <select id="dash-tb-batch" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
           <option value="">📦 All Batches</option>
         </select>
+        <select id="dash-tb-classification" class="form-select" style="min-width: 150px;" onchange="Views._applyDashboardAllFilters()">
+          <option value="">🏷️ All Classifications</option>
+        </select>
         <button class="btn btn--ghost btn--sm" style="white-space: nowrap;" onclick="Views._clearDashboardCandidateFilters()">✕ Clear</button>
       </div>
 
@@ -1839,6 +1842,7 @@
       const statusTbFilter = document.getElementById('dash-tb-status')?.value || '';
       const natFilter = document.getElementById('dash-tb-nat')?.value || '';
       const batchFilter = document.getElementById('dash-tb-batch')?.value || '';
+      const classFilter = normalizeText(document.getElementById('dash-tb-classification')?.value || '');
 
       const deptFilter = document.getElementById('dash-dept-filter')?.value || '';
       const completionMin = parseInt(document.getElementById('dash-completion-min')?.value || '0', 10);
@@ -1861,7 +1865,8 @@
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter; // <-- SURGICAL FIX ADDED
         const matchBatch = !batchFilter || Views._isBatchMatch(Views._getBatchValue(c), batchFilter);
-        if (!(matchPos && matchStatusTb && matchNat && matchBatch)) return false;
+        const matchClassification = !classFilter || normalizeText(c.Classification || c.classification || '') === classFilter;
+        if (!(matchPos && matchStatusTb && matchNat && matchBatch && matchClassification)) return false;
         // Include status
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Exclude status
@@ -2036,6 +2041,7 @@
         !!(document.getElementById('dash-tb-status')?.value) ||
         !!(document.getElementById('dash-tb-nat')?.value) ||
         !!(document.getElementById('dash-tb-batch')?.value) ||
+        !!(document.getElementById('dash-tb-classification')?.value) ||
         !!(document.getElementById('dash-dept-filter')?.value);
       const btn = document.getElementById('dash-clear-filters-btn');
       if (btn) btn.style.display = hasFilters ? '' : 'none';
@@ -2047,6 +2053,7 @@
       if (document.getElementById('dash-tb-status')) document.getElementById('dash-tb-status').selectedIndex = 0;
       if (document.getElementById('dash-tb-nat')) document.getElementById('dash-tb-nat').selectedIndex = 0;
       if (document.getElementById('dash-tb-batch')) document.getElementById('dash-tb-batch').selectedIndex = 0;
+      if (document.getElementById('dash-tb-classification')) document.getElementById('dash-tb-classification').selectedIndex = 0;
       Views._applyDashboardAllFilters();
     },
 
@@ -2072,6 +2079,7 @@
       if (document.getElementById('dash-tb-status')) document.getElementById('dash-tb-status').selectedIndex = 0;
       if (document.getElementById('dash-tb-nat')) document.getElementById('dash-tb-nat').selectedIndex = 0;
       if (document.getElementById('dash-tb-batch')) document.getElementById('dash-tb-batch').selectedIndex = 0;
+      if (document.getElementById('dash-tb-classification')) document.getElementById('dash-tb-classification').selectedIndex = 0;
       App.setState({ dashSortCol: '', dashSortDir: 'asc', dashSortAsc: true });
       // Also clear KPI card selection
       Views._clearDashboardFilter();
@@ -2319,6 +2327,9 @@
         <select id="cand-tb-batch" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
           <option value="">📦 All Batches</option>
         </select>
+        <select id="filter-classification" class="form-select" style="min-width: 150px;" onchange="Views._applyCandidateFilters()">
+          <option value="">🏷️ All Classifications</option>
+        </select>
         <button class="btn btn--ghost btn--sm" style="white-space: nowrap;" onclick="Views._clearAllCandidateFilters()">✕ Clear</button>
       </div>
 
@@ -2465,6 +2476,10 @@
       if (candSearchEl) {
         candSearchEl.addEventListener('input', debounce(() => Views._applyCandidateFilters(), 300));
       }
+      const classSelectEl = document.getElementById('filter-classification');
+      if (classSelectEl) {
+        classSelectEl.addEventListener('change', Views._applyCandidateFilters);
+      }
 
       Views._loadCandidates();
     },
@@ -2519,12 +2534,14 @@
       const statusSet = new Set();
       const natSet = new Set();
       const batchSet = new Set();
+      const classSet = new Set();
 
       // Seed from dynamic system settings so all configured options (including Staff Batch 5) appear
       App.getAllBatches().forEach(b => batchSet.add(b));
       (App.state.settings?.statuses || []).forEach(s => statusSet.add(s));
       (App.state.settings?.nationalities || []).forEach(n => natSet.add(n));
       (App.state.settings?.positions || []).forEach(p => posSet.add(p));
+      (App.state.settings?.classifications || ['Engineers', 'Labors and Technicians']).forEach(cl => classSet.add(cl));
 
       candidates.forEach(c => {
         if (c.Position) posSet.add(c.Position.trim());
@@ -2532,6 +2549,8 @@
         if (c.Nationality) natSet.add(c.Nationality.trim());
         const batchVal = Views._getBatchValue(c);
         if (batchVal) batchSet.add(batchVal.trim());
+        const classVal = (c.Classification || c.classification || '').trim();
+        if (classVal) classSet.add(classVal);
       });
 
       const fill = (elementId, set) => {
@@ -2558,12 +2577,15 @@
       fill('cand-tb-status', statusSet);
       fill('cand-tb-nat', natSet);
       fill('cand-tb-batch', batchSet);
+      fill('filter-classification', classSet);
+      fill('cand-tb-classification', classSet);
 
       // Populate Dashboard Dropdowns
       fill('dash-tb-pos', posSet);
       fill('dash-tb-status', statusSet);
       fill('dash-tb-nat', natSet);
       fill('dash-tb-batch', batchSet);
+      fill('dash-tb-classification', classSet);
     },
 
     _clearAllCandidateFilters() {
@@ -2572,6 +2594,8 @@
       if (document.getElementById('cand-tb-status')) document.getElementById('cand-tb-status').selectedIndex = 0;
       if (document.getElementById('cand-tb-nat')) document.getElementById('cand-tb-nat').selectedIndex = 0;
       if (document.getElementById('cand-tb-batch')) document.getElementById('cand-tb-batch').selectedIndex = 0;
+      const classSelect = document.getElementById('filter-classification') || document.getElementById('cand-tb-classification');
+      if (classSelect) classSelect.selectedIndex = 0;
       Views._filterCandidates();
     },
 
@@ -2586,6 +2610,7 @@
       const statusTbFilter = document.getElementById('cand-tb-status')?.value || '';
       const natFilter = document.getElementById('cand-tb-nat')?.value || '';
       const batchFilter = document.getElementById('cand-tb-batch')?.value || '';
+      const classFilterVal = normalizeText(document.getElementById('filter-classification')?.value || document.getElementById('cand-tb-classification')?.value || '');
 
       const deptFilter = document.getElementById('dept-filter')?.value || '';
       const completionMin = parseInt(document.getElementById('completion-min')?.value || '0', 10);
@@ -2605,6 +2630,8 @@
         const matchStatusTb = !statusTbFilter || c.CurrentStatus === statusTbFilter;
         const matchNat = !natFilter || c.Nationality === natFilter;
         const matchBatch = !batchFilter || Views._isBatchMatch(Views._getBatchValue(c), batchFilter);
+        const candClass = normalizeText(c.Classification || c.classification || '');
+        const matchClassification = classFilterVal === '' || candClass === classFilterVal;
         // Multi-select status INCLUDE (empty array = all pass)
         const matchS = statusFilters.length === 0 || statusFilters.includes(c.CurrentStatus);
         // Multi-select status EXCLUDE (empty array = nothing excluded)
@@ -2628,7 +2655,7 @@
           ? (completionMin === 0)  // show unavailable only when no min threshold is demanded
           : (!comp || comp.pct >= completionMin);
 
-        return matchQ && matchPos && matchStatusTb && matchNat && matchBatch && matchS && matchExcl && matchD && matchDoc && matchCompletion;
+        return matchQ && matchPos && matchStatusTb && matchNat && matchBatch && matchClassification && matchS && matchExcl && matchD && matchDoc && matchCompletion;
       });
 
       // Sorting — does not change the count, only the order.
@@ -2987,6 +3014,8 @@
       if (document.getElementById('cand-tb-search')) document.getElementById('cand-tb-search').value = '';
       const searchInput = document.getElementById('search-input');
       if (searchInput) searchInput.value = '';
+      const classSelect = document.getElementById('filter-classification') || document.getElementById('cand-tb-classification');
+      if (classSelect) classSelect.value = '';
       try { localStorage.removeItem('hr_candidate_filters'); } catch (_) { }
       Views._updateClearButton();
       // Reads from App.state.candidates — restores the full list.
